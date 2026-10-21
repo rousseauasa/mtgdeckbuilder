@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Decks · MTG Decks</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="page-deck">
+    <header class="topbar">
+      <a class="brand" href="index.html">MTG DECKS</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="deck.html" aria-current="page">Decks</a>
+      </nav>
+    </header>
+    <div class="workspace">
+      <main class="canvas-viewport" id="viewport" aria-label="Deck canvas">
+        <div class="canvas-world" id="world"></div>
+        <form class="commander" id="commander-form">
+          <label for="commander-name">Commander</label>
+          <input
+            id="commander-name"
+            type="text"
+            placeholder="Card name"
+            autocomplete="off"
+            aria-describedby="commander-status"
+          />
+          <p class="commander-status" id="commander-status" role="status"></p>
+          <img class="commander-preview" id="commander-preview" alt="" hidden />
+        </form>
+      </main>
+      <aside class="sidebar" aria-label="Card search">
+        <div class="sidebar-head">
+          <form class="search" id="search-form">
+            <input
+              id="card-query"
+              name="q"
+              type="search"
+              placeholder="Search for a card"
+              aria-label="Card name"
+              autocomplete="off"
+            />
+            <button type="submit">Search</button>
+          </form>
+          <p class="status" id="search-status" role="status"></p>
+          <button type="button" class="new-category" id="new-category">New category</button>
+          <details class="category-index">
+            <summary>Categories</summary>
+            <div class="category-index-scroll">
+              <table>
+                <tbody id="category-list"></tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+        <ul class="results" id="results" aria-label="Search results"></ul>
+      </aside>
+    </div>
+    <div class="drag-ghost" id="drag-ghost" hidden></div>
+    <img class="hover-preview" id="hover-preview" alt="" hidden />
+    <script src="deck.js"></script>
+  </body>
+</html>

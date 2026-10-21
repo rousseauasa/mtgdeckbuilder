@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MTG Decks</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html">MTG DECKS</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="deck.html">Decks</a>
+      </nav>
+    </header>
+    <main>
+      <section class="lookup">
+        <form class="search" id="search-form">
+          <input
+            id="card-query"
+            name="q"
+            type="search"
+            placeholder="Search for a card"
+            aria-label="Card name"
+            autocomplete="off"
+          />
+          <button type="submit">Search</button>
+        </form>
+        <p class="status" id="status" role="status"></p>
+        <figure class="card-display">
+          <img id="card-image" alt="" width="488" height="680" hidden />
+          <button type="button" class="flip" id="flip-card" hidden>Flip</button>
+          <figcaption id="card-caption" hidden></figcaption>
+        </figure>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
