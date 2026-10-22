@@ -23,6 +23,7 @@ const legalityTooltipIcon = document.querySelector("#legality-tooltip-icon");
 const legalityTooltipText = document.querySelector("#legality-tooltip-text");
 const cardMenu = document.querySelector("#card-menu");
 const menuDelete = document.querySelector("#menu-delete");
+const menuDetails = document.querySelector("#menu-details");
 const menuFlip = document.querySelector("#menu-flip");
 const menuCommander = document.querySelector("#menu-commander");
 const menuCategory = document.querySelector("#menu-category");
@@ -35,6 +36,14 @@ const printingPicker = document.querySelector("#printing-picker");
 const printingPickerList = document.querySelector("#printing-picker-list");
 const printingPickerStatus = document.querySelector("#printing-picker-status");
 const printingPickerBackdrop = document.querySelector("#printing-picker-backdrop");
+const cardDetails = document.querySelector("#card-details");
+const cardDetailsBackdrop = document.querySelector("#card-details-backdrop");
+const cardDetailsClose = document.querySelector("#card-details-close");
+const cardDetailsImage = document.querySelector("#card-details-image");
+const cardDetailsNoImage = document.querySelector("#card-details-noimage");
+const cardDetailsTitle = document.querySelector("#card-details-title");
+const cardDetailsStatus = document.querySelector("#card-details-status");
+const cardDetailsBody = document.querySelector("#card-details-body");
 
 const STACK_OFFSET = 30;
 const CARD_WIDTH = 200;
@@ -69,6 +78,7 @@ let menuCardId = null;
 let categoryPickerCardId = null;
 let printingPickerCardId = null;
 let printingPickerToken = 0;
+let cardDetailsToken = 0;
 let deckReady = false;
 
 const printingDatabase = new Map();
@@ -2037,6 +2047,12 @@ menuCategory.addEventListener("click", () => {
   if (card) openCategoryPicker(card);
 });
 
+menuDetails.addEventListener("click", () => {
+  const card = cardById(menuCardId);
+  closeCardMenu();
+  if (card) openCardDetails(card);
+});
+
 function closeCategoryPicker() {
   categoryPickerCardId = null;
   categoryPicker.hidden = true;
@@ -2083,6 +2099,147 @@ function closePrintingPicker() {
   printingPickerToken += 1;
   printingPicker.hidden = true;
 }
+
+function closeCardDetails() {
+  cardDetailsToken += 1;
+  cardDetails.hidden = true;
+}
+
+function colorNames(codes) {
+  return (codes ?? []).map((code) => COLOR_LABELS.find(([letter]) => letter === code)?.[1] ?? code);
+}
+
+function detailRow(list, label, value) {
+  if (value === null || value === undefined || value === "") return;
+  const term = document.createElement("dt");
+  term.textContent = label;
+  const description = document.createElement("dd");
+  description.textContent = value;
+  list.append(term, description);
+}
+
+function renderCardDetails(data, instance) {
+  const display = cardDisplay(instance.oracleId, instance.faceIndex, instance.printingId);
+  cardDetailsTitle.textContent = data?.name ?? display.fullName;
+  if (display.image) {
+    cardDetailsImage.src = display.image;
+    cardDetailsImage.alt = display.name;
+    cardDetailsImage.hidden = false;
+    cardDetailsNoImage.hidden = true;
+  } else {
+    cardDetailsImage.hidden = true;
+    cardDetailsImage.removeAttribute("src");
+    cardDetailsNoImage.hidden = false;
+  }
+
+  cardDetailsBody.replaceChildren();
+  const faces = data?.card_faces?.length ? data.card_faces : [data];
+  for (const face of faces) {
+    if (!face) continue;
+    const section = document.createElement("section");
+    section.className = "card-details-face";
+    if (faces.length > 1) {
+      const heading = document.createElement("h3");
+      heading.textContent = face.name ?? "";
+      section.append(heading);
+    }
+    if (face.type_line) {
+      const type = document.createElement("p");
+      type.className = "card-details-type";
+      type.textContent = face.type_line;
+      section.append(type);
+    }
+    if (face.oracle_text) {
+      const text = document.createElement("p");
+      text.className = "card-details-text";
+      text.textContent = face.oracle_text;
+      section.append(text);
+    }
+    const faceList = document.createElement("dl");
+    faceList.className = "card-details-list";
+    detailRow(faceList, "Mana cost", face.mana_cost);
+    if (face.power !== undefined && face.toughness !== undefined) {
+      detailRow(faceList, "Power / Toughness", `${face.power} / ${face.toughness}`);
+    }
+    if (face.loyalty !== undefined) detailRow(faceList, "Loyalty", face.loyalty);
+    if (face.defense !== undefined) detailRow(faceList, "Defense", face.defense);
+    if (faceList.childElementCount) section.append(faceList);
+    cardDetailsBody.append(section);
+  }
+
+  const list = document.createElement("dl");
+  list.className = "card-details-list";
+  if (data) {
+    if (data.power !== undefined && data.toughness !== undefined && !data.card_faces?.length) {
+      detailRow(list, "Power / Toughness", `${data.power} / ${data.toughness}`);
+    }
+    if (data.loyalty !== undefined && !data.card_faces?.length) detailRow(list, "Loyalty", data.loyalty);
+    if (data.defense !== undefined && !data.card_faces?.length) detailRow(list, "Defense", data.defense);
+    detailRow(list, "Mana value", data.cmc !== null && data.cmc !== undefined ? String(data.cmc) : "");
+    const colors = colorNames(data.colors?.length ? data.colors : cardColorsOf(data));
+    detailRow(list, "Colors", colors.join(", "));
+    const identity = colorNames(data.color_identity);
+    detailRow(list, "Color identity", identity.length ? identity.join(", ") : "Colorless");
+    detailRow(list, "Rarity", data.rarity ? data.rarity[0].toUpperCase() + data.rarity.slice(1) : "");
+    const set = data.set_name
+      ? `${data.set_name}${data.set ? ` (${data.set.toUpperCase()})` : ""}${data.collector_number ? ` #${data.collector_number}` : ""}`
+      : "";
+    detailRow(list, "Set", set);
+    detailRow(list, "Artist", data.artist);
+    const legality = data.legalities?.commander;
+    detailRow(list, "Commander", legality ? (legality === "legal" ? "Legal" : legality[0].toUpperCase() + legality.slice(1)) : "");
+  }
+  if (list.childElementCount) cardDetailsBody.append(list);
+}
+
+// Older saved decks only kept a few fields per card. If the details are not
+// there yet, fetch the full card from Scryfall and remember it for next time.
+function hasCardDetails(data) {
+  return Boolean(data && (data.oracle_text !== undefined || data.card_faces?.length));
+}
+
+async function loadFullCard(instance) {
+  const printing = instance.printingId ? printingDatabase.get(instance.printingId) : null;
+  const printingId = printing?.id || cardDatabase.get(instance.oracleId)?.id;
+  let raw = null;
+  if (printingId) {
+    raw = await scryfallJson(new URL(`https://api.scryfall.com/cards/${printingId}`));
+  } else {
+    const body = await scryfallJson(new URL(SEARCH_URL + `?q=oracleid:${instance.oracleId}`));
+    raw = body.data?.[0] ?? null;
+  }
+  if (!raw?.oracle_id) return null;
+  const trimmed = trimCard(raw);
+  if (instance.printingId) printingDatabase.set(trimmed.id, trimmed);
+  cardDatabase.set(trimmed.oracle_id, { ...cardDatabase.get(trimmed.oracle_id), ...trimmed });
+  persistDeck();
+  return instance.printingId ? printingDatabase.get(instance.printingId) : cardDatabase.get(instance.oracleId);
+}
+
+async function openCardDetails(instance) {
+  closeCardMenu();
+  hideHoverPreview();
+  const token = ++cardDetailsToken;
+  const printing = instance.printingId ? printingDatabase.get(instance.printingId) : null;
+  let data = printing ?? cardDatabase.get(instance.oracleId) ?? null;
+  renderCardDetails(data, instance);
+  cardDetailsStatus.textContent = hasCardDetails(data) ? "" : "Loading details…";
+  cardDetails.hidden = false;
+  cardDetails.querySelector(".card-details-dialog")?.focus();
+  if (hasCardDetails(data)) return;
+  try {
+    const full = await loadFullCard(instance);
+    if (token !== cardDetailsToken || cardDetails.hidden || !full) return;
+    data = full;
+    renderCardDetails(data, instance);
+    cardDetailsStatus.textContent = "";
+  } catch {
+    if (token === cardDetailsToken) cardDetailsStatus.textContent = "Couldn't load the full details.";
+  }
+}
+
+cardDetailsBackdrop.addEventListener("click", closeCardDetails);
+cardDetailsClose.addEventListener("click", closeCardDetails);
 
 async function fetchPrintings(oracleId) {
   const found = [];
@@ -2145,6 +2302,10 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (!cardDetails.hidden) {
+    closeCardDetails();
+    return;
+  }
   if (!printingPicker.hidden) {
     closePrintingPicker();
     return;

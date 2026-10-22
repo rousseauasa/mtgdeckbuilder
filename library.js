@@ -63,7 +63,13 @@ function trimFace(face) {
     name: face.name,
     type_line: face.type_line || "",
     colors: face.colors || [],
+    mana_cost: face.mana_cost || "",
+    oracle_text: face.oracle_text || "",
   };
+  if (face.power !== undefined) trimmed.power = face.power;
+  if (face.toughness !== undefined) trimmed.toughness = face.toughness;
+  if (face.loyalty !== undefined) trimmed.loyalty = face.loyalty;
+  if (face.defense !== undefined) trimmed.defense = face.defense;
   if (face.image_uris?.normal) trimmed.image_uris = { normal: face.image_uris.normal };
   return trimmed;
 }
@@ -77,7 +83,19 @@ function trimCard(card) {
     colors: card.colors || [],
     color_identity: card.color_identity || [],
     legalities: card.legalities ? { commander: card.legalities.commander || "" } : {},
+    mana_cost: card.mana_cost || "",
+    oracle_text: card.oracle_text || "",
+    cmc: card.cmc ?? null,
+    rarity: card.rarity || "",
+    set_name: card.set_name || "",
+    set: card.set || "",
+    collector_number: card.collector_number || "",
+    artist: card.artist || "",
   };
+  if (card.power !== undefined) trimmed.power = card.power;
+  if (card.toughness !== undefined) trimmed.toughness = card.toughness;
+  if (card.loyalty !== undefined) trimmed.loyalty = card.loyalty;
+  if (card.defense !== undefined) trimmed.defense = card.defense;
   if (card.image_uris?.normal) trimmed.image_uris = { normal: card.image_uris.normal };
   if (card.card_faces?.length) trimmed.card_faces = card.card_faces.map(trimFace);
   return trimmed;

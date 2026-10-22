@@ -76,6 +76,7 @@
     </div>
     <div class="card-menu" id="card-menu" role="menu" hidden>
       <button type="button" role="menuitem" id="menu-delete">Delete card</button>
+      <button type="button" role="menuitem" id="menu-details">Card details</button>
       <button type="button" role="menuitem" id="menu-flip">Flip card</button>
       <button type="button" role="menuitem" id="menu-printing">Change printing</button>
       <button type="button" role="menuitem" id="menu-commander">Make commander</button>
@@ -95,6 +96,21 @@
         <h2 id="printing-picker-title">Choose printing</h2>
         <p class="printing-picker-status" id="printing-picker-status" role="status"></p>
         <div class="category-picker-list" id="printing-picker-list"></div>
+      </div>
+    </div>
+    <div class="card-details" id="card-details" hidden>
+      <button type="button" class="card-details-backdrop" id="card-details-backdrop" aria-label="Close"></button>
+      <div class="card-details-dialog" role="dialog" aria-modal="true" aria-labelledby="card-details-title" tabindex="-1">
+        <button type="button" class="card-details-close" id="card-details-close" aria-label="Close card details">×</button>
+        <div class="card-details-media">
+          <img id="card-details-image" alt="" hidden />
+          <p class="card-details-noimage" id="card-details-noimage" hidden>No image available</p>
+        </div>
+        <div class="card-details-info">
+          <h2 id="card-details-title"></h2>
+          <p class="card-details-status" id="card-details-status" role="status"></p>
+          <div id="card-details-body"></div>
+        </div>
       </div>
     </div>
     <script src="library.js"></script>
