@@ -70,6 +70,7 @@ function trimFace(face) {
 
 function trimCard(card) {
   const trimmed = {
+    id: card.id || "",
     oracle_id: card.oracle_id,
     name: card.name,
     type_line: card.type_line || "",
@@ -193,6 +194,7 @@ function layoutImportedDeck(parsed, found, width, panX, panY) {
         categoryId: category ? category.id : null,
         stackId: null,
         faceIndex: 0,
+        printingId: null,
       };
       cards.push(instance);
       if (!category) loose.push(instance);

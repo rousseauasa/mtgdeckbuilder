@@ -889,6 +889,30 @@ body.page-deck main {
   background: transparent;
 }
 
+#menu-delete {
+  color: #c23b2e;
+}
+
+#menu-delete:disabled {
+  color: #c23b2e;
+  opacity: 0.5;
+}
+
+.printing-picker-status {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.printing-picker-status:empty {
+  display: none;
+}
+
+.category-picker-list button.is-current {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
 .category-picker {
   position: fixed;
   inset: 0;

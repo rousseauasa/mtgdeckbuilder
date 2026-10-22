@@ -29,6 +29,11 @@ const categoryPicker = document.querySelector("#category-picker");
 const categoryPickerList = document.querySelector("#category-picker-list");
 const categoryPickerEmpty = document.querySelector("#category-picker-empty");
 const categoryPickerBackdrop = document.querySelector("#category-picker-backdrop");
+const menuPrinting = document.querySelector("#menu-printing");
+const printingPicker = document.querySelector("#printing-picker");
+const printingPickerList = document.querySelector("#printing-picker-list");
+const printingPickerStatus = document.querySelector("#printing-picker-status");
+const printingPickerBackdrop = document.querySelector("#printing-picker-backdrop");
 
 const STACK_OFFSET = 30;
 const CARD_HEIGHT = 279;
@@ -52,29 +57,34 @@ let drag = null;
 let commander = null;
 let menuCardId = null;
 let categoryPickerCardId = null;
+let printingPickerCardId = null;
+let printingPickerToken = 0;
 let deckReady = false;
 
-function flippableFaces(oracleId) {
-  const card = cardDatabase.get(oracleId);
+const printingDatabase = new Map();
+
+function flippableFaces(oracleId, printingId = null) {
+  const card = (printingId && printingDatabase.get(printingId)) || cardDatabase.get(oracleId);
   const withImages = (card?.card_faces ?? []).filter((face) => face.image_uris?.normal);
   const uniqueUrls = new Set(withImages.map((face) => face.image_uris.normal));
   if (withImages.length > 1 && uniqueUrls.size > 1) return withImages;
   return [];
 }
 
-function cardDisplay(oracleId, faceIndex = 0) {
-  const card = cardDatabase.get(oracleId);
+function cardDisplay(oracleId, faceIndex = 0, printingId = null) {
+  const oracle = cardDatabase.get(oracleId);
+  const card = (printingId && printingDatabase.get(printingId)) || oracle;
   if (!card) return { name: "Unknown card", image: null, canFlip: false, fullName: "Unknown card" };
-  const faces = flippableFaces(oracleId);
+  const faces = flippableFaces(oracleId, printingId);
   if (faces.length > 1) {
     const face = faces[((faceIndex % faces.length) + faces.length) % faces.length];
-    return { name: face.name, image: face.image_uris.normal, canFlip: true, fullName: card.name };
+    return { name: face.name, image: face.image_uris.normal, canFlip: true, fullName: oracle?.name ?? card.name };
   }
   const image =
     card.image_uris?.normal ??
     card.card_faces?.find((face) => face.image_uris)?.image_uris.normal ??
     null;
-  return { name: card.name, image, canFlip: false, fullName: card.name };
+  return { name: card.name, image, canFlip: false, fullName: oracle?.name ?? card.name };
 }
 
 function isFormatIllegal(oracleId) {
@@ -223,6 +233,7 @@ function createInstance(oracleId, x, y) {
     categoryId: null,
     stackId: null,
     faceIndex: 0,
+    printingId: null,
   };
   state.cards.push(instance);
   return instance;
@@ -476,7 +487,7 @@ function bringToFront(card) {
 }
 
 function renderFreeCard(card) {
-  const display = cardDisplay(card.oracleId, card.faceIndex);
+  const display = cardDisplay(card.oracleId, card.faceIndex, card.printingId);
   const article = document.createElement("article");
   article.className = "free-card";
   markLegality(article, card);
@@ -590,9 +601,9 @@ function renderCategoryBody(category, members) {
     item.dataset.id = card.instanceId;
     item.tabIndex = 0;
     item.setAttribute("role", "button");
-    item.textContent = cardDisplay(card.oracleId, card.faceIndex).name;
+    item.textContent = cardDisplay(card.oracleId, card.faceIndex, card.printingId).name;
     watchCardName(item, () => {
-      const display = cardDisplay(card.oracleId, card.faceIndex);
+      const display = cardDisplay(card.oracleId, card.faceIndex, card.printingId);
       return { url: display.image, name: display.name };
     });
     list.append(item);
@@ -986,7 +997,7 @@ function startCardDrag(id, event, mode) {
 }
 
 function showGhost(card, clientX, clientY) {
-  const display = cardDisplay(card.oracleId, card.faceIndex);
+  const display = cardDisplay(card.oracleId, card.faceIndex, card.printingId);
   dragGhost.replaceChildren();
   if (display.image) {
     const image = document.createElement("img");
@@ -1503,7 +1514,7 @@ function markCommanderTarget(active) {
 }
 
 function assignCommander(card) {
-  const display = cardDisplay(card.oracleId, card.faceIndex);
+  const display = cardDisplay(card.oracleId, card.faceIndex, card.printingId);
   commander = { query: display.fullName, name: display.fullName, oracleId: card.oracleId };
   commanderInput.value = display.fullName;
   if (display.image) {
@@ -1539,7 +1550,7 @@ function closeCardMenu() {
 
 function openCardMenu(card, clientX, clientY) {
   menuCardId = card.instanceId;
-  menuFlip.disabled = !cardDisplay(card.oracleId, card.faceIndex).canFlip;
+  menuFlip.disabled = !cardDisplay(card.oracleId, card.faceIndex, card.printingId).canFlip;
   cardMenu.hidden = false;
   cardMenu.style.left = `${clientX}px`;
   cardMenu.style.top = `${clientY}px`;
@@ -1557,8 +1568,8 @@ function deleteCard(card) {
 }
 
 function flipCard(card) {
-  if (!cardDisplay(card.oracleId, card.faceIndex).canFlip) return;
-  const total = flippableFaces(card.oracleId).length;
+  if (!cardDisplay(card.oracleId, card.faceIndex, card.printingId).canFlip) return;
+  const total = flippableFaces(card.oracleId, card.printingId).length;
   card.faceIndex = ((card.faceIndex || 0) + 1) % total;
   renderBoard();
 }
@@ -1630,6 +1641,72 @@ function openCategoryPicker(card) {
 
 categoryPickerBackdrop.addEventListener("click", closeCategoryPicker);
 
+menuPrinting.addEventListener("click", () => {
+  const card = cardById(menuCardId);
+  closeCardMenu();
+  if (card) openPrintingPicker(card);
+});
+
+function closePrintingPicker() {
+  printingPickerCardId = null;
+  printingPickerToken += 1;
+  printingPicker.hidden = true;
+}
+
+async function fetchPrintings(oracleId) {
+  const found = [];
+  let url = new URL(SEARCH_URL);
+  url.searchParams.set("q", `oracleid:${oracleId}`);
+  url.searchParams.set("unique", "prints");
+  url.searchParams.set("order", "released");
+  while (url) {
+    const body = await scryfallJson(url);
+    found.push(...(body.data ?? []));
+    url = body.has_more && body.next_page ? new URL(body.next_page) : null;
+  }
+  return found;
+}
+
+async function openPrintingPicker(card) {
+  printingPickerCardId = card.instanceId;
+  const token = ++printingPickerToken;
+  printingPickerList.replaceChildren();
+  printingPickerStatus.textContent = "Loading printings…";
+  printingPicker.hidden = false;
+  printingPicker.querySelector(".category-picker-dialog")?.focus();
+  try {
+    const printings = await fetchPrintings(card.oracleId);
+    if (token !== printingPickerToken || printingPicker.hidden) return;
+    const currentId = cardById(printingPickerCardId)?.printingId || cardDatabase.get(card.oracleId)?.id || "";
+    printingPickerStatus.textContent = printings.length ? "" : "No printings found.";
+    for (const printing of printings) {
+      if (!printing.id) continue;
+      printingDatabase.set(printing.id, trimCard(printing));
+      const button = document.createElement("button");
+      button.type = "button";
+      const setName = printing.set_name || printing.set || "Unknown set";
+      const setCode = printing.set ? ` (${printing.set.toUpperCase()})` : "";
+      const number = printing.collector_number ? ` #${printing.collector_number}` : "";
+      button.textContent = `${setName}${setCode}${number}${printing.id === currentId ? " · current" : ""}`;
+      if (printing.id === currentId) button.classList.add("is-current");
+      button.addEventListener("click", () => {
+        const chosen = cardById(printingPickerCardId);
+        const printingId = printing.id;
+        closePrintingPicker();
+        if (!chosen) return;
+        chosen.printingId = printingId;
+        renderBoard();
+      });
+      printingPickerList.append(button);
+    }
+  } catch (error) {
+    if (token !== printingPickerToken) return;
+    printingPickerStatus.textContent = error.message;
+  }
+}
+
+printingPickerBackdrop.addEventListener("click", closePrintingPicker);
+
 document.addEventListener("pointerdown", (event) => {
   if (cardMenu.hidden || event.target.closest("#card-menu")) return;
   closeCardMenu();
@@ -1637,6 +1714,10 @@ document.addEventListener("pointerdown", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (!printingPicker.hidden) {
+    closePrintingPicker();
+    return;
+  }
   if (!categoryPicker.hidden) {
     closeCategoryPicker();
     return;
@@ -1657,6 +1738,10 @@ function persistDeck() {
   cardDatabase.forEach((card, id) => {
     cardsByOracle[id] = card;
   });
+  const printingsById = {};
+  printingDatabase.forEach((printing, id) => {
+    printingsById[id] = printing;
+  });
   saveDeckState({
     cards: state.cards,
     categories: state.categories,
@@ -1664,6 +1749,7 @@ function persistDeck() {
     notes: state.notes,
     commander,
     cardsByOracle,
+    printingsById,
   });
 }
 
@@ -1678,6 +1764,10 @@ function restoreDeck() {
   cardDatabase.clear();
   for (const [id, card] of Object.entries(saved.cardsByOracle ?? {})) {
     cardDatabase.set(id, card);
+  }
+  printingDatabase.clear();
+  for (const [id, printing] of Object.entries(saved.printingsById ?? {})) {
+    printingDatabase.set(id, printing);
   }
   if (commander?.name) {
     commanderInput.value = commander.name;
@@ -1736,7 +1826,7 @@ function exportDecklist() {
   }
   const counts = new Map();
   for (const card of state.cards) {
-    const name = cardDisplay(card.oracleId, card.faceIndex).fullName;
+    const name = cardDisplay(card.oracleId, card.faceIndex, card.printingId).fullName;
     const category = card.categoryId ? categoryById(card.categoryId)?.name?.trim() ?? "" : "";
     const key = `${name}\0${category}`;
     const entry = counts.get(key) ?? { name, category, count: 0 };

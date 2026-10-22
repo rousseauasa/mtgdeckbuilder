@@ -39,3 +39,10 @@ This is a huge overhaul to the existing site. Under each incremented version bel
     - Make the searchbar be visible even when the sidebar is collapsed
     - Clicking into the search bar should open the sidebar
     - The collapse button should be on the right side of the search bar, and should just be an arrow pointing down when the sidebar is open and up when the sidebar is collapsed
+
+## v1.2.0.7
+- Card printing switcher:
+    - New option on the right click menu
+    - Opens a popup with a list of all the sets a card was printed in
+    - When you click on an entry in the list, the cards image will switch to its printing from that set
+- Make the delete card text option on the right click menu red
