@@ -46,3 +46,18 @@ This is a huge overhaul to the existing site. Under each incremented version bel
     - Opens a popup with a list of all the sets a card was printed in
     - When you click on an entry in the list, the cards image will switch to its printing from that set
 - Make the delete card text option on the right click menu red
+
+## v1.2.1
+- Lets make it so if you click on the empty canvas off of the sidebar for searching cards, managing categories, etc., it hides the sidebar.
+- Lets also switch the direction of the arrows on the collapse button, so it points up when the sidebar is open and down when it is collapsed.
+
+## v1.2.2
+- For cards that do not fit the commanders color identity, add the warning icon (Icons/warning.png) to the middle of the card, overlayed on top. Make sure its reasonably sized in the card so as to not cover up too much of its content.
+- Do the same thing for with (Icons/remove.png) for illegal cards
+- New page, located on the far right side of the nav bar, Credits. Read (Reference/credits.md), and display these credits in an aesthetic way on the page.
+- Remove the import button from the navbar, we don't need it anymore since the homepage has an import tool
+- Go through all pages and make sure navbar is consistent
+
+## v1.2.2.1
+- When you hover over an illegal card, a custom aesthetic tooltip popup will appear displaying the Icons/remove.png icon and reading "This card is not legal in commander"
+- When you hover over a card that doesn't match with the commander's color identity, the same popup will appear but this time showing Icons/warning.png and reading "This card does not match your commander's color identity"

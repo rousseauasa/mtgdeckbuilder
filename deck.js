@@ -13,13 +13,14 @@ const commanderForm = document.querySelector("#commander-form");
 const commanderInput = document.querySelector("#commander-name");
 const commanderStatus = document.querySelector("#commander-status");
 const commanderPreview = document.querySelector("#commander-preview");
-const importDeckButton = document.querySelector("#import-deck");
-const decklistFile = document.querySelector("#decklist-file");
 const saveDeckButton = document.querySelector("#save-deck");
 const decklistStatus = document.querySelector("#decklist-status");
 const cardCount = document.querySelector("#card-count");
 const dragGhost = document.querySelector("#drag-ghost");
 const hoverPreview = document.querySelector("#hover-preview");
+const legalityTooltip = document.querySelector("#legality-tooltip");
+const legalityTooltipIcon = document.querySelector("#legality-tooltip-icon");
+const legalityTooltipText = document.querySelector("#legality-tooltip-text");
 const cardMenu = document.querySelector("#card-menu");
 const menuDelete = document.querySelector("#menu-delete");
 const menuFlip = document.querySelector("#menu-flip");
@@ -53,6 +54,8 @@ let suggestionTimer = 0;
 let hoverToken = 0;
 let hoverTimer = 0;
 let hoverAnchor = null;
+let legalityTooltipTimer = 0;
+let legalityTooltipTarget = null;
 let drag = null;
 let commander = null;
 let menuCardId = null;
@@ -907,7 +910,91 @@ function hideHoverPreview() {
   hoverToken += 1;
   hoverAnchor = null;
   hoverPreview.hidden = true;
+  hideLegalityTooltip();
 }
+
+const LEGALITY_TOOLTIPS = {
+  illegal: {
+    icon: "Icons/remove.png",
+    text: "This card is not legal in commander",
+  },
+  "off-color": {
+    icon: "Icons/warning.png",
+    text: "This card does not match your commander's color identity",
+  },
+};
+
+function hideLegalityTooltip() {
+  window.clearTimeout(legalityTooltipTimer);
+  legalityTooltipTarget = null;
+  legalityTooltip.hidden = true;
+}
+
+function placeLegalityTooltip() {
+  if (legalityTooltip.hidden || !legalityTooltipTarget?.isConnected) return;
+  const rect = legalityTooltipTarget.getBoundingClientRect();
+  const tooltipRect = legalityTooltip.getBoundingClientRect();
+  const left = Math.max(
+    8,
+    Math.min(rect.left + rect.width / 2 - tooltipRect.width / 2, window.innerWidth - tooltipRect.width - 8),
+  );
+  let top = rect.top - tooltipRect.height - 10;
+  if (top < 8) top = rect.bottom + 10;
+  top = Math.max(8, Math.min(top, window.innerHeight - tooltipRect.height - 8));
+  legalityTooltip.style.left = `${left}px`;
+  legalityTooltip.style.top = `${top}px`;
+}
+
+function showLegalityTooltip(element) {
+  if (drag) return;
+  const legality = element.classList.contains("is-illegal")
+    ? "illegal"
+    : element.classList.contains("is-off-color")
+      ? "off-color"
+      : null;
+  if (!legality) {
+    hideLegalityTooltip();
+    return;
+  }
+  if (legalityTooltipTarget === element && !legalityTooltip.hidden) return;
+  window.clearTimeout(legalityTooltipTimer);
+  legalityTooltipTarget = element;
+  legalityTooltipTimer = window.setTimeout(() => {
+    if (legalityTooltipTarget !== element || drag) return;
+    const info = LEGALITY_TOOLTIPS[legality];
+    legalityTooltipIcon.src = info.icon;
+    legalityTooltipText.textContent = info.text;
+    legalityTooltip.classList.toggle("is-illegal", legality === "illegal");
+    legalityTooltip.classList.toggle("is-off-color", legality === "off-color");
+    legalityTooltip.hidden = false;
+    placeLegalityTooltip();
+  }, 220);
+}
+
+world.addEventListener("pointerover", (event) => {
+  const target = event.target.closest(".free-card, .category-card");
+  if (target) showLegalityTooltip(target);
+});
+
+world.addEventListener("pointermove", () => {
+  if (!legalityTooltip.hidden) placeLegalityTooltip();
+});
+
+world.addEventListener("pointerout", (event) => {
+  const target = event.target.closest(".free-card, .category-card");
+  if (target && !target.contains(event.relatedTarget)) hideLegalityTooltip();
+});
+
+world.addEventListener("pointerdown", hideLegalityTooltip);
+
+world.addEventListener("focusin", (event) => {
+  const target = event.target.closest(".free-card, .category-card");
+  if (target) showLegalityTooltip(target);
+});
+
+world.addEventListener("focusout", hideLegalityTooltip);
+window.addEventListener("blur", hideLegalityTooltip);
+window.addEventListener("resize", placeLegalityTooltip);
 
 function placeHoverPreview(anchor) {
   const rect = anchor.getBoundingClientRect();
@@ -1304,7 +1391,10 @@ function onPointerUp(event) {
     if (current.moved && placed && !placed.overCommander) placeKnownCard(commander.oracleId, placed);
     return;
   }
-  if (current.kind === "pan") return;
+  if (current.kind === "pan") {
+    if (!current.moved) setSidebarCollapsed(true);
+    return;
+  }
   if (current.kind === "category") {
     elementById("category", current.id)?.classList.remove("is-dragging");
     persistDeck();
@@ -1417,7 +1507,7 @@ function setSidebarCollapsed(collapsed) {
   sidebar.classList.toggle("is-collapsed", collapsed);
   sidebarCollapse.setAttribute("aria-expanded", collapsed ? "false" : "true");
   sidebarCollapse.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
-  sidebarCollapse.textContent = collapsed ? "▴" : "▾";
+  sidebarCollapse.textContent = collapsed ? "▾" : "▴";
 }
 
 sidebarCollapse.addEventListener("click", () => {
@@ -1784,41 +1874,6 @@ function restoreDeck() {
   return true;
 }
 
-async function importDecklist(text) {
-  const parsed = parseDecklist(text);
-  if (parsed.error) {
-    setDecklistStatus(parsed.error, true);
-    return;
-  }
-  const names = [...new Set([...parsed.cards.map((entry) => entry.name), parsed.commander.name])];
-  const found = new Map();
-  try {
-    for (let index = 0; index < names.length; index += 1) {
-      const name = names[index];
-      setDecklistStatus(`Importing ${index + 1} of ${names.length}…`);
-      const card = await lookupExact(name);
-      if (!card) {
-        setDecklistStatus(`Couldn't find ${name}.`, true);
-        return;
-      }
-      rememberCard(card);
-      found.set(name.toLowerCase(), card);
-    }
-  } catch (error) {
-    setDecklistStatus(error.message, true);
-    return;
-  }
-
-  const laid = layoutImportedDeck(parsed, found, viewport.getBoundingClientRect().width, panX, panY);
-  state.categories.push(...laid.categories);
-  state.cards.push(...laid.cards);
-  assignCommander({ oracleId: laid.commanderOracleId, faceIndex: 0 });
-  renderBoard();
-  renderCategoryIndex();
-  const placed = laid.cards.length;
-  setDecklistStatus(placed === 1 ? "Imported 1 card." : `Imported ${placed} cards.`);
-}
-
 function exportDecklist() {
   if (!commander?.name) {
     setDecklistStatus("Set a commander before saving.", true);
@@ -1846,21 +1901,6 @@ function exportDecklist() {
   URL.revokeObjectURL(url);
   setDecklistStatus("");
 }
-
-importDeckButton.addEventListener("click", () => {
-  decklistFile.click();
-});
-
-decklistFile.addEventListener("change", async () => {
-  const file = decklistFile.files?.[0];
-  decklistFile.value = "";
-  if (!file) return;
-  try {
-    await importDecklist(await file.text());
-  } catch (error) {
-    setDecklistStatus(error.message, true);
-  }
-});
 
 saveDeckButton.addEventListener("click", exportDecklist);
 

@@ -13,8 +13,7 @@
         <a href="deck.html" aria-current="page">Deck</a>
         <a href="stats.html" id="nav-stats">Stats</a>
         <a href="devlog.html">Devlog</a>
-        <button type="button" id="import-deck">Import</button>
-        <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
+        <a href="credits.html">Credits</a>
       </nav>
     </header>
     <div class="workspace">
@@ -52,7 +51,7 @@
               />
               <button type="submit">Search</button>
             </form>
-            <button type="button" class="sidebar-collapse" id="sidebar-collapse" aria-expanded="true" aria-controls="sidebar" aria-label="Collapse sidebar">▾</button>
+            <button type="button" class="sidebar-collapse" id="sidebar-collapse" aria-expanded="true" aria-controls="sidebar" aria-label="Collapse sidebar">▴</button>
           </div>
           <p class="status" id="search-status" role="status"></p>
           <button type="button" class="new-category" id="new-category">New category</button>
@@ -71,6 +70,10 @@
     </div>
     <div class="drag-ghost" id="drag-ghost" hidden></div>
     <img class="hover-preview" id="hover-preview" alt="" hidden />
+    <div class="legality-tooltip" id="legality-tooltip" role="tooltip" hidden>
+      <img id="legality-tooltip-icon" alt="" />
+      <span id="legality-tooltip-text"></span>
+    </div>
     <div class="card-menu" id="card-menu" role="menu" hidden>
       <button type="button" role="menuitem" id="menu-delete">Delete card</button>
       <button type="button" role="menuitem" id="menu-flip">Flip card</button>
