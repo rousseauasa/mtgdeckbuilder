@@ -6,6 +6,8 @@ const searchStatus = document.querySelector("#search-status");
 const results = document.querySelector("#results");
 const newCategoryButton = document.querySelector("#new-category");
 const newNoteButton = document.querySelector("#new-note");
+const sidebar = document.querySelector("#sidebar");
+const sidebarCollapse = document.querySelector("#sidebar-collapse");
 const categoryList = document.querySelector("#category-list");
 const commanderForm = document.querySelector("#commander-form");
 const commanderInput = document.querySelector("#commander-name");
@@ -546,9 +548,12 @@ function renderCategory(category) {
     category.display = category.display === "stack" ? "names" : "stack";
     renderBoard();
   });
-  bar.append(grip, input, toggle);
-
   const members = state.cards.filter((card) => card.categoryId === category.id);
+  const count = document.createElement("span");
+  count.className = "category-count";
+  count.textContent = members.length === 1 ? "1 card" : `${members.length} cards`;
+  bar.append(grip, input, count, toggle);
+
   article.append(bar, renderCategoryBody(category, members));
   return article;
 }
@@ -1396,6 +1401,21 @@ searchForm.addEventListener("submit", (event) => {
   if (!query) return;
   runSearch(query);
 });
+
+function setSidebarCollapsed(collapsed) {
+  sidebar.classList.toggle("is-collapsed", collapsed);
+  sidebarCollapse.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  sidebarCollapse.setAttribute("aria-label", collapsed ? "Expand sidebar" : "Collapse sidebar");
+  sidebarCollapse.textContent = collapsed ? "▴" : "▾";
+}
+
+sidebarCollapse.addEventListener("click", () => {
+  setSidebarCollapsed(!sidebar.classList.contains("is-collapsed"));
+});
+
+searchInput.addEventListener("focus", () => setSidebarCollapsed(false));
+searchInput.addEventListener("pointerdown", () => setSidebarCollapsed(false));
+searchInput.addEventListener("click", () => setSidebarCollapsed(false));
 
 newCategoryButton.addEventListener("click", createCategory);
 newNoteButton.addEventListener("click", createNote);

@@ -12,6 +12,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="deck.html" aria-current="page">Deck</a>
         <a href="stats.html" id="nav-stats">Stats</a>
+        <a href="devlog.html">Devlog</a>
         <button type="button" id="import-deck">Import</button>
         <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
       </nav>
@@ -37,19 +38,22 @@
           <button type="button" class="save-deck" id="save-deck">Save</button>
         </div>
       </main>
-      <aside class="sidebar" aria-label="Card search">
+      <aside class="sidebar" id="sidebar" aria-label="Card search">
         <div class="sidebar-head">
-          <form class="search" id="search-form">
-            <input
-              id="card-query"
-              name="q"
-              type="search"
-              placeholder="Search for a card"
-              aria-label="Card name"
-              autocomplete="off"
-            />
-            <button type="submit">Search</button>
-          </form>
+          <div class="sidebar-search-row">
+            <form class="search" id="search-form">
+              <input
+                id="card-query"
+                name="q"
+                type="search"
+                placeholder="Search for a card"
+                aria-label="Card name"
+                autocomplete="off"
+              />
+              <button type="submit">Search</button>
+            </form>
+            <button type="button" class="sidebar-collapse" id="sidebar-collapse" aria-expanded="true" aria-controls="sidebar" aria-label="Collapse sidebar">▾</button>
+          </div>
           <p class="status" id="search-status" role="status"></p>
           <button type="button" class="new-category" id="new-category">New category</button>
           <button type="button" class="new-category" id="new-note">New note</button>

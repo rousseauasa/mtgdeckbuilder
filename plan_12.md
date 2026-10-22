@@ -28,3 +28,14 @@ This is a huge overhaul to the existing site. Under each incremented version bel
 - Lets add to the illegal card feature. Add the following features to it:
     - Add a red tint to the card image as well as the outline for a card thats illegal
     - Make both the outline and the tint a yellow color for a card that doesn't fit the colors, keeping red for illegal cards
+
+## v1.2.0.5
+- Lets add a feature to the categories where it will say how many cards are in the category at the top
+- Lets also make the sidebar on the right with the card searching feature, adding categories/notes, and sorting your categories collapsable.
+    - The search bar should stay, and on its right side should now be an arrow button to collapse the sidebar.
+
+## v1.2.0.6
+- Edits to the collapsing feature for the sidebar
+    - Make the searchbar be visible even when the sidebar is collapsed
+    - Clicking into the search bar should open the sidebar
+    - The collapse button should be on the right side of the search bar, and should just be an arrow pointing down when the sidebar is open and up when the sidebar is collapsed
