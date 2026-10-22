@@ -11,6 +11,8 @@
       <a class="brand" href="index.html">MTG DECKS</a>
       <nav class="nav" aria-label="Primary">
         <a href="deck.html" aria-current="page">Decks</a>
+        <button type="button" id="import-deck">Import</button>
+        <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
       </nav>
     </header>
     <div class="workspace">
@@ -28,6 +30,11 @@
           <p class="commander-status" id="commander-status" role="status"></p>
           <img class="commander-preview" id="commander-preview" alt="" hidden />
         </form>
+        <div class="decklist-bar">
+          <p class="card-count" id="card-count">0 cards</p>
+          <p class="decklist-status" id="decklist-status" role="status"></p>
+          <button type="button" class="save-deck" id="save-deck">Save</button>
+        </div>
       </main>
       <aside class="sidebar" aria-label="Card search">
         <div class="sidebar-head">
@@ -58,6 +65,20 @@
     </div>
     <div class="drag-ghost" id="drag-ghost" hidden></div>
     <img class="hover-preview" id="hover-preview" alt="" hidden />
+    <div class="card-menu" id="card-menu" role="menu" hidden>
+      <button type="button" role="menuitem" id="menu-delete">Delete card</button>
+      <button type="button" role="menuitem" id="menu-flip">Flip card</button>
+      <button type="button" role="menuitem" id="menu-commander">Make commander</button>
+      <button type="button" role="menuitem" id="menu-category">Add to category</button>
+    </div>
+    <div class="category-picker" id="category-picker" hidden>
+      <button type="button" class="category-picker-backdrop" id="category-picker-backdrop" aria-label="Close"></button>
+      <div class="category-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="category-picker-title" tabindex="-1">
+        <h2 id="category-picker-title">Add to category</h2>
+        <p class="category-picker-empty" id="category-picker-empty" hidden>No categories yet.</p>
+        <div class="category-picker-list" id="category-picker-list"></div>
+      </div>
+    </div>
     <script src="deck.js"></script>
   </body>
 </html>

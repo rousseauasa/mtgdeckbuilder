@@ -48,20 +48,28 @@ body {
   gap: 28px;
 }
 
-.nav a {
+.nav a,
+.nav button {
+  border: 0;
+  padding: 0;
   color: var(--muted);
+  font: inherit;
   font-size: 14px;
   letter-spacing: 0.04em;
   text-decoration: none;
+  background: transparent;
+  cursor: pointer;
 }
 
 .nav a:hover,
+.nav button:hover,
 .nav a[aria-current="page"] {
   color: var(--ink);
 }
 
 .brand:focus-visible,
-.nav a:focus-visible {
+.nav a:focus-visible,
+.nav button:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 4px;
 }
@@ -245,9 +253,22 @@ body.page-deck main {
   box-shadow: 0 16px 40px rgba(31, 28, 25, 0.16);
 }
 
-.free-card.is-dragging {
-  z-index: 1000;
+.free-card.is-dragging,
+.stack.is-dragging {
+  z-index: 2000 !important;
   cursor: grabbing;
+}
+
+.stack {
+  position: absolute;
+  z-index: 2;
+  width: 200px;
+}
+
+.stack.is-drop-target,
+.free-card.is-drop-target {
+  outline: 2px solid var(--ink);
+  outline-offset: 4px;
 }
 
 .free-card-name {
@@ -291,7 +312,8 @@ body.page-deck main {
 }
 
 .category-name {
-  width: 100%;
+  flex: 1;
+  width: auto;
   min-width: 0;
   border: 0;
   padding: 0;
@@ -305,6 +327,37 @@ body.page-deck main {
 
 .category-name:focus {
   outline: none;
+}
+
+.category-display {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.category-display[aria-pressed="true"] {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.category-stack {
+  position: relative;
+  width: 200px;
+  margin-top: 10px;
+}
+
+.in-category-stack {
+  cursor: grab;
+}
+
+.in-category-stack.is-lifted {
+  visibility: hidden;
 }
 
 .category-cards {
@@ -431,6 +484,10 @@ body.page-deck main {
   text-transform: uppercase;
 }
 
+.commander.can-drag {
+  cursor: grab;
+}
+
 .commander input {
   width: 168px;
   border: 0;
@@ -438,6 +495,7 @@ body.page-deck main {
   color: inherit;
   font: inherit;
   background: transparent;
+  cursor: text;
 }
 
 .commander input:focus {
@@ -478,6 +536,165 @@ body.page-deck main {
   display: block;
 }
 
+.commander.is-drop-target {
+  z-index: 2500;
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.decklist-bar {
+  position: absolute;
+  z-index: 8;
+  bottom: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.save-deck {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: var(--ink);
+  font: inherit;
+  background: #fffdf8;
+  cursor: pointer;
+}
+
+.card-count {
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fffdf8;
+  font-size: 14px;
+}
+
+.decklist-status {
+  margin: 0;
+  max-width: 280px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.decklist-status.is-error {
+  color: #8a3b32;
+}
+
+.card-menu {
+  position: fixed;
+  z-index: 4000;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 16px 40px rgba(31, 28, 25, 0.16);
+}
+
+.card-menu[hidden] {
+  display: none;
+}
+
+.card-menu button {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.card-menu button:hover,
+.card-menu button:focus-visible {
+  background: rgba(31, 28, 25, 0.06);
+}
+
+.card-menu button:disabled {
+  color: var(--muted);
+  cursor: default;
+  background: transparent;
+}
+
+.category-picker {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.category-picker[hidden] {
+  display: none;
+}
+
+.category-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(31, 28, 25, 0.32);
+  cursor: pointer;
+}
+
+.category-picker-dialog {
+  position: relative;
+  width: min(320px, 100%);
+  max-height: min(420px, 100%);
+  overflow: auto;
+  padding: 18px;
+  border-radius: 16px;
+  background: #fffdf8;
+  box-shadow: 0 16px 40px rgba(31, 28, 25, 0.16);
+}
+
+.category-picker-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.category-picker-empty {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.category-picker-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.category-picker-list button {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+}
+
+.category-picker-list button:hover,
+.category-picker-list button:focus-visible {
+  border-color: var(--ink);
+  outline: none;
+}
+
 .results {
   margin: 0;
   padding: 4px 16px 24px;
@@ -486,23 +703,26 @@ body.page-deck main {
 }
 
 .result {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
 
 .result-name {
+  display: block;
+  width: 100%;
   min-width: 0;
+  padding: 10px 0;
   font-size: 14px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
 
 .add-card:focus-visible,
 .new-category:focus-visible,
 .category-name:focus-visible,
+.category-display:focus-visible,
 .category-jump:focus-visible,
+.result-name:focus-visible,
 .commander input:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 3px;
@@ -536,7 +756,7 @@ body.page-deck main {
 
 .drag-ghost {
   position: fixed;
-  z-index: 30;
+  z-index: 3000;
   width: 200px;
   pointer-events: none;
 }
