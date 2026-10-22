@@ -37,6 +37,7 @@ const printingPickerStatus = document.querySelector("#printing-picker-status");
 const printingPickerBackdrop = document.querySelector("#printing-picker-backdrop");
 
 const STACK_OFFSET = 30;
+const CARD_WIDTH = 200;
 const CARD_HEIGHT = 279;
 const DRAG_LAYER = "2000";
 
@@ -57,6 +58,12 @@ let hoverAnchor = null;
 let legalityTooltipTimer = 0;
 let legalityTooltipTarget = null;
 let drag = null;
+let pendingMove = null;
+let moveFrame = 0;
+let lastDropKey = null;
+let lastCommanderTarget = false;
+let persistTimer = 0;
+let persistPending = false;
 let commander = null;
 let menuCardId = null;
 let categoryPickerCardId = null;
@@ -111,9 +118,30 @@ function markLegality(element, card) {
   element.classList.toggle("is-off-color", legality === "off-color");
 }
 
+function markCommanderCard(element, card) {
+  if (!element.classList.contains("free-card")) return;
+  const isCommander = Boolean(card && commander?.oracleId && card.oracleId === commander.oracleId);
+  element.classList.toggle("is-commander", isCommander);
+  let crown = element.querySelector(":scope > .commander-crown");
+  if (isCommander && !crown) {
+    // A plain span with a background image, not an <img>: an image inside the
+    // card can be grabbed/native-dragged on its own and fights the card's
+    // drag handling. The span is purely decorative but still part of the
+    // card, so pressing on the crown starts a normal card drag.
+    crown = document.createElement("span");
+    crown.className = "commander-crown";
+    crown.setAttribute("aria-hidden", "true");
+    element.append(crown);
+  } else if (!isCommander && crown) {
+    crown.remove();
+  }
+}
+
 function refreshIllegalMarkings() {
   for (const element of world.querySelectorAll(".free-card, .category-card")) {
-    markLegality(element, cardById(element.dataset.id));
+    const card = cardById(element.dataset.id);
+    markLegality(element, card);
+    markCommanderCard(element, card);
   }
   commanderForm.classList.toggle("is-illegal", Boolean(commander?.oracleId && isFormatIllegal(commander.oracleId)));
 }
@@ -275,7 +303,7 @@ async function placeNewCard(item, drop) {
     const position = drop ?? visibleOrigin(state.cards.length);
     const instance = createInstance(card.oracle_id, position.x, position.y);
     if (drop) applyDrop(instance, drop);
-    renderBoard();
+    syncCardPlacement(instance, { categoryId: null, stackId: null, stackMemberIds: [] });
   } catch (error) {
     setSearchStatus(error.message, true);
   }
@@ -284,7 +312,7 @@ async function placeNewCard(item, drop) {
 function placeKnownCard(oracleId, drop) {
   const instance = createInstance(oracleId, drop.x, drop.y);
   applyDrop(instance, drop);
-  renderBoard();
+  syncCardPlacement(instance, { categoryId: null, stackId: null, stackMemberIds: [] });
 }
 
 function createCategory() {
@@ -296,7 +324,10 @@ function createCategory() {
     y: 48 - panY + slot * 28,
     display: "names",
   });
-  renderBoard();
+  const newCategory = state.categories[state.categories.length - 1];
+  world.append(renderCategory(newCategory));
+  updateCardCount();
+  persistDeck();
   renderCategoryIndex();
   const created = state.categories[state.categories.length - 1];
   const input = elementById("category", created.id)?.querySelector(".category-name");
@@ -314,8 +345,9 @@ function createNote() {
     y: 200 - panY + slot * 28,
     collapsed: false,
   });
-  renderBoard();
   const created = state.notes[state.notes.length - 1];
+  world.append(renderNote(created));
+  persistDeck();
   const input = elementById("note", created.id)?.querySelector(".note-title");
   input?.focus();
   input?.select();
@@ -327,14 +359,69 @@ function applyPan() {
 }
 
 function clientToCanvas(clientX, clientY) {
-  const rect = viewport.getBoundingClientRect();
+  const rect = drag?.viewportRect ?? viewport.getBoundingClientRect();
   return {
     x: clientX - rect.left - panX,
     y: clientY - rect.top - panY,
   };
 }
 
+// Gather everything hit-testing needs once, when a drag starts, so mouse-move
+// handling can work from plain numbers instead of re-measuring the page.
+function prepareDragCache() {
+  if (!drag || drag.viewportRect) return;
+  drag.viewportRect = viewport.getBoundingClientRect();
+  drag.commanderRect = commanderForm.getBoundingClientRect();
+  drag.categoryBoxes = state.categories.map((category) => {
+    const element = elementById("category", category.id);
+    const rect = element?.getBoundingClientRect();
+    return {
+      id: category.id,
+      left: rect ? rect.left - drag.viewportRect.left - panX : category.x,
+      top: rect ? rect.top - drag.viewportRect.top - panY : category.y,
+      right: rect ? rect.right - drag.viewportRect.left - panX : category.x + 240,
+      bottom: rect ? rect.bottom - drag.viewportRect.top - panY : category.y + CARD_HEIGHT,
+    };
+  });
+}
+
+function categoryAtCanvasPoint(x, y) {
+  if (!drag?.categoryBoxes) return null;
+  for (let index = drag.categoryBoxes.length - 1; index >= 0; index -= 1) {
+    const box = drag.categoryBoxes[index];
+    if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) return box.id;
+  }
+  return null;
+}
+
+function dropTargetAtCanvasPoint(x, y, ignoreId) {
+  for (let index = state.cards.length - 1; index >= 0; index -= 1) {
+    const card = state.cards[index];
+    if (card.instanceId === ignoreId || card.categoryId || card.stackId) continue;
+    if (x >= card.x && x <= card.x + CARD_WIDTH && y >= card.y && y <= card.y + CARD_HEIGHT) {
+      return { type: "card", id: card.instanceId };
+    }
+  }
+  for (let index = state.stacks.length - 1; index >= 0; index -= 1) {
+    const stack = state.stacks[index];
+    for (let member = stack.cardIds.length - 1; member >= 0; member -= 1) {
+      if (stack.cardIds[member] === ignoreId) continue;
+      const top = stack.y + member * STACK_OFFSET;
+      if (x >= stack.x && x <= stack.x + CARD_WIDTH && y >= top && y <= top + CARD_HEIGHT) {
+        return { type: "stack", id: stack.id };
+      }
+    }
+  }
+  return null;
+}
+
+function commanderAtClientPoint(clientX, clientY) {
+  const rect = drag?.commanderRect ?? commanderForm.getBoundingClientRect();
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+}
+
 function renderBoard() {
+  lastDropKey = null;
   world.replaceChildren();
   for (const category of state.categories) {
     world.append(renderCategory(category));
@@ -373,6 +460,165 @@ function renderStack(stack) {
     group.append(element);
   });
   return group;
+}
+
+// --- Targeted updates -------------------------------------------------
+// Changing one card used to rebuild the whole board. These helpers touch
+// only the category, stack, or card that actually changed, and fall back
+// to a full renderBoard() if the expected element is not there.
+
+function placementOf(card) {
+  if (!card) return { categoryId: null, stackId: null, stackMemberIds: [] };
+  return {
+    categoryId: card.categoryId ?? null,
+    stackId: card.stackId ?? null,
+    stackMemberIds: card.stackId ? cardsInStack(card.stackId).map((member) => member.instanceId) : [],
+  };
+}
+
+function cardElements(cardId) {
+  return [...world.querySelectorAll(".free-card, .category-card")].filter(
+    (element) => element.dataset.id === cardId,
+  );
+}
+
+function removeCardElements(cardId) {
+  for (const element of cardElements(cardId)) element.remove();
+}
+
+function refreshFreeCardLayers() {
+  let layer = 2;
+  for (const card of state.cards) {
+    if (card.categoryId || card.stackId) continue;
+    const element = cardElements(card.instanceId).find(
+      (item) =>
+        item.classList.contains("free-card") &&
+        !item.classList.contains("in-stack") &&
+        !item.classList.contains("in-category-stack"),
+    );
+    if (element) element.style.zIndex = String(layer);
+    layer += 1;
+  }
+}
+
+function rerenderCategory(categoryId) {
+  const category = categoryById(categoryId);
+  if (!category) return;
+  const existing = elementById("category", categoryId);
+  const fresh = renderCategory(category);
+  if (existing) existing.replaceWith(fresh);
+  else world.append(fresh);
+}
+
+function rerenderStack(stackId) {
+  const stack = stackById(stackId);
+  if (!stack) return false;
+  const existing = elementById("stack", stackId);
+  if (existing) {
+    existing.replaceWith(renderStack(stack));
+    return true;
+  }
+  for (const memberId of stack.cardIds) {
+    const anchor = cardElements(memberId).find(
+      (item) =>
+        item.classList.contains("free-card") &&
+        !item.classList.contains("in-stack") &&
+        !item.classList.contains("in-category-stack"),
+    );
+    if (anchor) {
+      anchor.replaceWith(renderStack(stack));
+      return true;
+    }
+  }
+  return false;
+}
+
+function syncDissolvedStack(stackId, memberIds, excludeId = null) {
+  const group = elementById("stack", stackId);
+  if (!group) return;
+  const remaining = (memberIds ?? [])
+    .filter((id) => id !== excludeId)
+    .map((id) => cardById(id))
+    .filter((card) => card && !card.categoryId && !card.stackId);
+  if (remaining.length === 1) group.replaceWith(renderFreeCard(remaining[0]));
+  else group.remove();
+}
+
+function ensureFreeCardElement(card) {
+  const existing = cardElements(card.instanceId).find(
+    (item) =>
+      item.classList.contains("free-card") &&
+      !item.classList.contains("in-stack") &&
+      !item.classList.contains("in-category-stack"),
+  );
+  if (existing) {
+    existing.style.left = `${card.x}px`;
+    existing.style.top = `${card.y}px`;
+    existing.style.transform = "";
+    existing.classList.remove("is-dragging", "is-lifted");
+    markLegality(existing, card);
+    markCommanderCard(existing, card);
+    return;
+  }
+  world.append(renderFreeCard(card));
+}
+
+function syncCardPlacement(card, before) {
+  if (!card) return;
+  const after = placementOf(card);
+  if (before.categoryId && before.categoryId !== after.categoryId) rerenderCategory(before.categoryId);
+  if (before.stackId && before.stackId !== after.stackId) {
+    if (stackById(before.stackId)) rerenderStack(before.stackId);
+    else syncDissolvedStack(before.stackId, before.stackMemberIds, card.instanceId);
+  }
+  if (after.categoryId) {
+    if (before.categoryId !== after.categoryId) removeCardElements(card.instanceId);
+    rerenderCategory(after.categoryId);
+  } else if (after.stackId) {
+    if (before.stackId !== after.stackId) {
+      removeCardElements(card.instanceId);
+      if (!rerenderStack(after.stackId)) {
+        renderBoard();
+        return;
+      }
+    } else {
+      rerenderStack(after.stackId);
+    }
+  } else {
+    ensureFreeCardElement(card);
+  }
+  refreshFreeCardLayers();
+  refreshIllegalMarkings();
+  updateCardCount();
+  persistDeck();
+  if (state.cards.some((item) => !cardElements(item.instanceId).length)) renderBoard();
+}
+
+function updateCardDisplay(card) {
+  const display = cardDisplay(card.oracleId, card.faceIndex, card.printingId);
+  for (const element of cardElements(card.instanceId)) {
+    if (element.classList.contains("category-card")) {
+      element.textContent = display.name;
+    } else {
+      element.replaceChildren();
+      if (display.image) {
+        const image = document.createElement("img");
+        image.src = display.image;
+        image.alt = display.name;
+        image.draggable = false;
+        element.append(image);
+      } else {
+        const fallback = document.createElement("p");
+        fallback.className = "free-card-name";
+        fallback.textContent = display.name;
+        element.append(fallback);
+      }
+      element.setAttribute("aria-label", display.name);
+    }
+    markLegality(element, card);
+    markCommanderCard(element, card);
+  }
+  persistDeck();
 }
 
 function renderCategoryIndex() {
@@ -449,7 +695,8 @@ function renderNote(note) {
   remove.setAttribute("aria-label", "Delete note");
   remove.addEventListener("click", () => {
     state.notes = state.notes.filter((item) => item.id !== note.id);
-    renderBoard();
+    article.remove();
+    persistDeck();
   });
   bar.append(grip, title, collapse, remove);
 
@@ -494,6 +741,7 @@ function renderFreeCard(card) {
   const article = document.createElement("article");
   article.className = "free-card";
   markLegality(article, card);
+  markCommanderCard(article, card);
   article.dataset.id = card.instanceId;
   article.tabIndex = 0;
   article.setAttribute("role", "button");
@@ -560,7 +808,8 @@ function renderCategory(category) {
   toggle.setAttribute("aria-label", "Show cards as a stack");
   toggle.addEventListener("click", () => {
     category.display = category.display === "stack" ? "names" : "stack";
-    renderBoard();
+    rerenderCategory(category.id);
+    persistDeck();
   });
   const members = state.cards.filter((card) => card.categoryId === category.id);
   const count = document.createElement("span");
@@ -685,14 +934,19 @@ function moveStackIntoCategory(stackId, categoryId) {
     card.categoryId = categoryId;
   }
   state.stacks = state.stacks.filter((stack) => stack.id !== stackId);
-  renderBoard();
+  elementById("stack", stackId)?.remove();
+  rerenderCategory(categoryId);
+  refreshFreeCardLayers();
+  updateCardCount();
+  persistDeck();
 }
 
 function moveStack(stack, x, y) {
+  if (!stack) return;
   stack.x = x;
   stack.y = y;
   layoutStack(stack);
-  const element = elementById("stack", stack.id);
+  const element = drag?.kind === "stack" && drag.id === stack.id ? drag.element : elementById("stack", stack.id);
   if (!element) return;
   element.style.left = `${stack.x}px`;
   element.style.top = `${stack.y}px`;
@@ -730,6 +984,9 @@ function categoryAtPoint(clientX, clientY) {
 }
 
 function markDropTarget(categoryId, stackId, cardId) {
+  const key = `${categoryId ?? ""}|${stackId ?? ""}|${cardId ?? ""}`;
+  if (key === lastDropKey) return;
+  lastDropKey = key;
   for (const element of world.querySelectorAll(".category, .stack, .free-card")) {
     const selected =
       (element.classList.contains("category") && element.dataset.id === categoryId) ||
@@ -1071,6 +1328,9 @@ function startCardDrag(id, event, mode) {
   world.style.zIndex = DRAG_LAYER;
   if (mode === "free" || mode === "extract") {
     const element = elementById("free-card", id);
+    drag.element = element;
+    drag.startX = card.x;
+    drag.startY = card.y;
     element?.classList.add("is-dragging");
     if (element) element.style.zIndex = DRAG_LAYER;
     beginCardJuice(element);
@@ -1128,6 +1388,9 @@ function startStackDrag(id, event) {
   holdPointer(event);
   world.style.zIndex = DRAG_LAYER;
   const element = elementById("stack", id);
+  drag.element = element;
+  drag.startX = stack.x;
+  drag.startY = stack.y;
   element?.classList.add("is-dragging");
   if (element) element.style.zIndex = DRAG_LAYER;
   beginCardJuice(element, false);
@@ -1150,7 +1413,8 @@ function startNoteDrag(id, event) {
   };
   holdPointer(event);
   world.style.zIndex = DRAG_LAYER;
-  elementById("note", id)?.classList.add("is-dragging");
+  drag.element = elementById("note", id);
+  drag.element?.classList.add("is-dragging");
 }
 
 function beginCardJuice(element, wiggle = true) {
@@ -1158,6 +1422,8 @@ function beginCardJuice(element, wiggle = true) {
   drag.noWiggle = !wiggle;
   drag.juiceElement = element;
   drag.juiceX = null;
+  drag.moveDx = 0;
+  drag.moveDy = 0;
   drag.juiceRot = -2.5;
   drag.juiceSx = 1.08;
   drag.juiceSy = 0.96;
@@ -1169,7 +1435,7 @@ function beginCardJuice(element, wiggle = true) {
     const visual = drag.juiceElement;
     if (visual && drag.moved) {
       const wobble = drag.noWiggle ? 0 : Math.sin(now / 75) * 1.7;
-      visual.style.transform = `rotate(${drag.juiceRot + wobble}deg) scale(${drag.juiceSx}, ${drag.juiceSy})`;
+      visual.style.transform = `translate(${drag.moveDx ?? 0}px, ${drag.moveDy ?? 0}px) rotate(${drag.juiceRot + wobble}deg) scale(${drag.juiceSx}, ${drag.juiceSy})`;
     }
     drag.juiceFrame = requestAnimationFrame(tick);
   };
@@ -1203,8 +1469,23 @@ function endCardJuice() {
   dragGhost.classList.remove("is-juicy");
   if (!visual) return;
   visual.classList.remove("is-dragging", "is-juicy");
+  const movedByTransform = (drag.moveDx ?? 0) !== 0 || (drag.moveDy ?? 0) !== 0;
+  if (!movedByTransform) {
+    visual.style.transform = "";
+    return;
+  }
+  // The card was moved by the transform's translate, and the caller is about
+  // to write that same distance into left/top. If the whole transform simply
+  // cleared (with the settle transition active), the card would briefly get
+  // both offsets at once and jump. Strip only the translate now, without a
+  // transition, and let just the tilt/scale animate back on the next frame.
+  visual.style.transition = "none";
+  visual.style.transform = `rotate(${drag.juiceRot ?? 0}deg) scale(${drag.juiceSx ?? 1}, ${drag.juiceSy ?? 1})`;
   visual.getBoundingClientRect();
-  visual.style.transform = "";
+  visual.style.transition = "";
+  requestAnimationFrame(() => {
+    if (visual.isConnected) visual.style.transform = "";
+  });
 }
 
 function startCategoryDrag(id, event) {
@@ -1224,7 +1505,8 @@ function startCategoryDrag(id, event) {
   };
   holdPointer(event);
   world.style.zIndex = DRAG_LAYER;
-  elementById("category", id)?.classList.add("is-dragging");
+  drag.element = elementById("category", id);
+  drag.element?.classList.add("is-dragging");
 }
 
 function holdPointer(event) {
@@ -1240,7 +1522,7 @@ function moveNote(note, x, y) {
   if (!note) return;
   note.x = x;
   note.y = y;
-  const element = elementById("note", note.id);
+  const element = drag?.kind === "note" && drag.id === note.id ? drag.element : elementById("note", note.id);
   if (!element) return;
   element.style.left = `${note.x}px`;
   element.style.top = `${note.y}px`;
@@ -1257,7 +1539,8 @@ function moveCategory(category, x, y) {
       card.y += dy;
     }
   }
-  const element = elementById("category", category.id);
+  const element =
+    drag?.kind === "category" && drag.id === category.id ? drag.element : elementById("category", category.id);
   if (!element) return;
   element.style.left = `${category.x}px`;
   element.style.top = `${category.y}px`;
@@ -1265,6 +1548,7 @@ function moveCategory(category, x, y) {
 
 function onPointerMove(event) {
   if (!drag || event.pointerId !== drag.pointerId) return;
+  prepareDragCache();
   const distance = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY);
   if (distance > (drag.threshold ?? 4)) drag.moved = true;
   drag.lastX = event.clientX;
@@ -1295,11 +1579,12 @@ function onPointerMove(event) {
       moveGhost(event.clientX, event.clientY);
     }
     const fromCommander = drag.kind === "commander-card";
-    const overCommander = !fromCommander && commanderAtPoint(event.clientX, event.clientY);
+    const overCommander = !fromCommander && commanderAtClientPoint(event.clientX, event.clientY);
     markCommanderTarget(overCommander);
-    const blocked = overCommander || (fromCommander && commanderAtPoint(event.clientX, event.clientY));
-    const categoryId = blocked ? null : categoryAtPoint(event.clientX, event.clientY);
-    const target = blocked || categoryId ? null : dropTargetAtPoint(event.clientX, event.clientY, null);
+    const blocked = overCommander || (fromCommander && commanderAtClientPoint(event.clientX, event.clientY));
+    const hoverPoint = clientToCanvas(event.clientX, event.clientY);
+    const categoryId = blocked ? null : categoryAtCanvasPoint(hoverPoint.x, hoverPoint.y);
+    const target = blocked || categoryId ? null : dropTargetAtCanvasPoint(hoverPoint.x, hoverPoint.y, null);
     markDropTarget(categoryId, target?.type === "stack" ? target.id : null, target?.type === "card" ? target.id : null);
     return;
   }
@@ -1317,30 +1602,51 @@ function onPointerMove(event) {
     return;
   }
   if (drag.kind === "stack") {
-    moveStack(stackById(drag.id), nextX, nextY);
-    markDropTarget(categoryAtPoint(event.clientX, event.clientY), null, null);
+    const stack = stackById(drag.id);
+    if (stack) {
+      stack.x = nextX;
+      stack.y = nextY;
+      layoutStack(stack);
+      drag.moveDx = nextX - (drag.startX ?? nextX);
+      drag.moveDy = nextY - (drag.startY ?? nextY);
+    }
+    markDropTarget(categoryAtCanvasPoint(point.x, point.y), null, null);
     return;
   }
 
   if (drag.mode === "extract" && !drag.detached) {
     const card = cardById(drag.id);
+    const before = placementOf(card);
     detachFromStack(card);
     drag.detached = true;
     drag.mode = "free";
     card.x = nextX;
     card.y = nextY;
-    renderBoard();
-    const lifted = elementById("free-card", card.instanceId);
-    lifted?.classList.add("is-dragging");
-    if (lifted) lifted.style.zIndex = DRAG_LAYER;
+    if (before.stackId) {
+      if (stackById(before.stackId)) rerenderStack(before.stackId);
+      else syncDissolvedStack(before.stackId, before.stackMemberIds, card.instanceId);
+    }
+    removeCardElements(card.instanceId);
+    const lifted = renderFreeCard(card);
+    world.append(lifted);
+    refreshFreeCardLayers();
+    lifted.classList.add("is-dragging");
+    lifted.style.zIndex = DRAG_LAYER;
+    drag.element = lifted;
+    drag.startX = card.x;
+    drag.startY = card.y;
     beginCardJuice(lifted);
     return;
   }
 
-  const overCommander = commanderAtPoint(event.clientX, event.clientY);
+  const overCommander = commanderAtClientPoint(event.clientX, event.clientY);
   markCommanderTarget(overCommander);
-  const categoryId = overCommander ? null : categoryAtPoint(event.clientX, event.clientY);
-  const target = categoryId || overCommander ? null : landingTarget(event.clientX, event.clientY, drag.id);
+  const categoryId = overCommander ? null : categoryAtCanvasPoint(point.x, point.y);
+  let target = categoryId || overCommander ? null : dropTargetAtCanvasPoint(point.x, point.y, drag.id);
+  if (target && drag.originStackId) {
+    if (target.type === "stack" && target.id === drag.originStackId) target = null;
+    if (target.type === "card" && drag.extractIds?.has(target.id)) target = null;
+  }
   markDropTarget(categoryId, target?.type === "stack" ? target.id : null, target?.type === "card" ? target.id : null);
   if (drag.mode === "compact") {
     moveGhost(event.clientX, event.clientY);
@@ -1350,15 +1656,23 @@ function onPointerMove(event) {
   const card = cardById(drag.id);
   card.x = nextX;
   card.y = nextY;
-  const element = elementById("free-card", card.instanceId);
-  if (!element) return;
-  element.style.left = `${card.x}px`;
-  element.style.top = `${card.y}px`;
+  if (!drag.element?.isConnected) drag.element = elementById("free-card", card.instanceId);
+  if (!drag.element) return;
+  drag.moveDx = nextX - (drag.startX ?? nextX);
+  drag.moveDy = nextY - (drag.startY ?? nextY);
+  if (!drag.juiceElement) {
+    drag.element.style.transform = `translate(${drag.moveDx}px, ${drag.moveDy}px)`;
+  }
 }
 
 function onPointerUp(event) {
   if (!drag || event.pointerId !== drag.pointerId) return;
+  if (moveFrame) cancelAnimationFrame(moveFrame);
+  moveFrame = 0;
+  pendingMove = null;
   endCardJuice();
+  const beforeCard = drag.kind === "card" ? cardById(drag.id) : null;
+  const beforePlacement = placementOf(beforeCard);
   const distance = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY);
   if (distance > (drag.threshold ?? 4)) drag.moved = true;
   if (drag.moved && drag.kind !== "spawn" && drag.kind !== "commander-card") settleDrag(event.clientX, event.clientY);
@@ -1439,7 +1753,7 @@ function onPointerUp(event) {
     else if (target?.type === "card") createStack(cardById(target.id), card);
     else bringToFront(card);
   }
-  renderBoard();
+  syncCardPlacement(card, beforePlacement);
 }
 
 function settleDrag(clientX, clientY) {
@@ -1477,7 +1791,7 @@ function settleDrag(clientX, clientY) {
     moveGhost(clientX, clientY);
     return;
   }
-  const element = elementById("free-card", card.instanceId);
+  const element = drag.element?.isConnected ? drag.element : elementById("free-card", card.instanceId);
   if (!element) return;
   element.style.left = `${card.x}px`;
   element.style.top = `${card.y}px`;
@@ -1522,7 +1836,22 @@ newCategoryButton.addEventListener("click", createCategory);
 newNoteButton.addEventListener("click", createNote);
 
 viewport.addEventListener("pointerdown", onPointerDown);
-document.addEventListener("pointermove", onPointerMove);
+document.addEventListener("pointermove", (event) => {
+  if (!drag || event.pointerId !== drag.pointerId) {
+    onPointerMove(event);
+    return;
+  }
+  // Mouse-move events can arrive faster than the screen refreshes. Keep only
+  // the latest one and handle it on the next frame.
+  pendingMove = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+  if (moveFrame) return;
+  moveFrame = requestAnimationFrame(() => {
+    moveFrame = 0;
+    const move = pendingMove;
+    pendingMove = null;
+    if (move) onPointerMove(move);
+  });
+});
 document.addEventListener("pointerup", onPointerUp);
 document.addEventListener("pointercancel", onPointerUp);
 viewport.addEventListener(
@@ -1600,6 +1929,8 @@ function commanderAtPoint(clientX, clientY) {
 }
 
 function markCommanderTarget(active) {
+  if (active === lastCommanderTarget) return;
+  lastCommanderTarget = active;
   commanderForm.classList.toggle("is-drop-target", active);
 }
 
@@ -1652,16 +1983,25 @@ function openCardMenu(card, clientX, clientY) {
 }
 
 function deleteCard(card) {
+  const before = placementOf(card);
   if (card.stackId) detachFromStack(card);
   state.cards = state.cards.filter((item) => item.instanceId !== card.instanceId);
-  renderBoard();
+  removeCardElements(card.instanceId);
+  if (before.categoryId) rerenderCategory(before.categoryId);
+  if (before.stackId) {
+    if (stackById(before.stackId)) rerenderStack(before.stackId);
+    else syncDissolvedStack(before.stackId, before.stackMemberIds, card.instanceId);
+  }
+  refreshFreeCardLayers();
+  updateCardCount();
+  persistDeck();
 }
 
 function flipCard(card) {
   if (!cardDisplay(card.oracleId, card.faceIndex, card.printingId).canFlip) return;
   const total = flippableFaces(card.oracleId, card.printingId).length;
   card.faceIndex = ((card.faceIndex || 0) + 1) % total;
-  renderBoard();
+  updateCardDisplay(card);
 }
 
 viewport.addEventListener("contextmenu", (event) => {
@@ -1704,9 +2044,10 @@ function closeCategoryPicker() {
 
 function addCardToCategory(card, categoryId) {
   if (card.categoryId === categoryId) return;
+  const before = placementOf(card);
   if (card.stackId) detachFromStack(card);
   card.categoryId = categoryId;
-  renderBoard();
+  syncCardPlacement(card, before);
 }
 
 function openCategoryPicker(card) {
@@ -1785,7 +2126,7 @@ async function openPrintingPicker(card) {
         closePrintingPicker();
         if (!chosen) return;
         chosen.printingId = printingId;
-        renderBoard();
+        updateCardDisplay(chosen);
       });
       printingPickerList.append(button);
     }
@@ -1823,6 +2164,24 @@ function setDecklistStatus(message, isError = false) {
 }
 
 function persistDeck() {
+  if (!deckReady) return;
+  persistPending = true;
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = 0;
+    persistDeckNow();
+  }, 250);
+}
+
+function flushPersist() {
+  if (!persistPending) return;
+  window.clearTimeout(persistTimer);
+  persistTimer = 0;
+  persistDeckNow();
+}
+
+function persistDeckNow() {
+  persistPending = false;
   if (!deckReady) return;
   const cardsByOracle = {};
   cardDatabase.forEach((card, id) => {
@@ -1910,5 +2269,7 @@ if (!restoreDeck()) renderCategoryIndex();
 deckReady = true;
 
 document.querySelector("#nav-stats")?.addEventListener("click", () => {
-  persistDeck();
+  flushPersist();
 });
+
+window.addEventListener("pagehide", flushPersist);

@@ -61,3 +61,6 @@ This is a huge overhaul to the existing site. Under each incremented version bel
 ## v1.2.2.1
 - When you hover over an illegal card, a custom aesthetic tooltip popup will appear displaying the Icons/remove.png icon and reading "This card is not legal in commander"
 - When you hover over a card that doesn't match with the commander's color identity, the same popup will appear but this time showing Icons/warning.png and reading "This card does not match your commander's color identity"
+
+## v1.2.3
+- Add the Icons/crown.png icon to the commander card if it's on the board, just above the card in the middle.

@@ -483,6 +483,18 @@ body.page-deck main {
   box-shadow: 0 26px 36px rgba(31, 28, 25, 0.3);
 }
 
+.free-card .commander-crown {
+  position: absolute;
+  z-index: 3;
+  top: -30px;
+  left: 50%;
+  width: 46px;
+  height: 46px;
+  transform: translateX(-50%);
+  background: url("Icons/crown.png") center / contain no-repeat;
+  filter: drop-shadow(0 2px 4px rgba(31, 28, 25, 0.35));
+}
+
 .stack {
   position: absolute;
   z-index: 2;
