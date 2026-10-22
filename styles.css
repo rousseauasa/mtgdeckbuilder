@@ -236,6 +236,58 @@ body.page-deck main {
   inset: 0;
 }
 
+.free-card.is-illegal,
+.free-card.is-off-color {
+  border-radius: 10px;
+}
+
+.free-card.is-illegal {
+  box-shadow: 0 0 0 3px #c23b2e;
+}
+
+.free-card.is-off-color {
+  box-shadow: 0 0 0 3px #d9a400;
+}
+
+.free-card.is-illegal::after,
+.free-card.is-off-color::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.free-card.is-illegal::after {
+  background: rgba(194, 59, 46, 0.3);
+}
+
+.free-card.is-off-color::after {
+  background: rgba(217, 164, 0, 0.32);
+}
+
+.category-card.is-illegal,
+.category-card.is-off-color {
+  border-radius: 8px;
+}
+
+.category-card.is-illegal {
+  box-shadow: 0 0 0 2px #c23b2e;
+  background: rgba(194, 59, 46, 0.18);
+  color: #8a2b20;
+}
+
+.category-card.is-off-color {
+  box-shadow: 0 0 0 2px #d9a400;
+  background: rgba(217, 164, 0, 0.18);
+  color: #7a5a00;
+}
+
+.commander.is-illegal {
+  border-color: #c23b2e;
+  box-shadow: 0 0 0 2px #c23b2e;
+}
+
 .free-card {
   position: absolute;
   z-index: 2;

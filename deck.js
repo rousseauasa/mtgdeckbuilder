@@ -75,6 +75,34 @@ function cardDisplay(oracleId, faceIndex = 0) {
   return { name: card.name, image, canFlip: false, fullName: card.name };
 }
 
+function isFormatIllegal(oracleId) {
+  const status = cardDatabase.get(oracleId)?.legalities?.commander;
+  return Boolean(status && status !== "legal");
+}
+
+function cardLegality(card) {
+  const data = cardDatabase.get(card.oracleId);
+  if (!data) return null;
+  if (isFormatIllegal(card.oracleId)) return "illegal";
+  if (!commander?.oracleId) return null;
+  const identity = cardDatabase.get(commander.oracleId)?.color_identity;
+  if (!identity) return null;
+  return (data.color_identity ?? []).every((color) => identity.includes(color)) ? null : "off-color";
+}
+
+function markLegality(element, card) {
+  const legality = card ? cardLegality(card) : null;
+  element.classList.toggle("is-illegal", legality === "illegal");
+  element.classList.toggle("is-off-color", legality === "off-color");
+}
+
+function refreshIllegalMarkings() {
+  for (const element of world.querySelectorAll(".free-card, .category-card")) {
+    markLegality(element, cardById(element.dataset.id));
+  }
+  commanderForm.classList.toggle("is-illegal", Boolean(commander?.oracleId && isFormatIllegal(commander.oracleId)));
+}
+
 function setSearchStatus(message, isError = false) {
   searchStatus.textContent = message;
   searchStatus.classList.toggle("is-error", isError);
@@ -309,6 +337,7 @@ function renderBoard() {
   for (const note of state.notes) {
     world.append(renderNote(note));
   }
+  refreshIllegalMarkings();
   updateCardCount();
   persistDeck();
 }
@@ -448,6 +477,7 @@ function renderFreeCard(card) {
   const display = cardDisplay(card.oracleId, card.faceIndex);
   const article = document.createElement("article");
   article.className = "free-card";
+  markLegality(article, card);
   article.dataset.id = card.instanceId;
   article.tabIndex = 0;
   article.setAttribute("role", "button");
@@ -551,6 +581,7 @@ function renderCategoryBody(category, members) {
   for (const card of members) {
     const item = document.createElement("li");
     item.className = "category-card";
+    markLegality(item, card);
     item.dataset.id = card.instanceId;
     item.tabIndex = 0;
     item.setAttribute("role", "button");
@@ -996,7 +1027,7 @@ function startStackDrag(id, event) {
   const element = elementById("stack", id);
   element?.classList.add("is-dragging");
   if (element) element.style.zIndex = DRAG_LAYER;
-  beginCardJuice(element);
+  beginCardJuice(element, false);
 }
 
 function startNoteDrag(id, event) {
@@ -1019,8 +1050,9 @@ function startNoteDrag(id, event) {
   elementById("note", id)?.classList.add("is-dragging");
 }
 
-function beginCardJuice(element) {
+function beginCardJuice(element, wiggle = true) {
   if (!drag || !element) return;
+  drag.noWiggle = !wiggle;
   drag.juiceElement = element;
   drag.juiceX = null;
   drag.juiceRot = -2.5;
@@ -1033,7 +1065,7 @@ function beginCardJuice(element) {
     if (!drag?.juicing) return;
     const visual = drag.juiceElement;
     if (visual && drag.moved) {
-      const wobble = Math.sin(now / 75) * 1.7;
+      const wobble = drag.noWiggle ? 0 : Math.sin(now / 75) * 1.7;
       visual.style.transform = `rotate(${drag.juiceRot + wobble}deg) scale(${drag.juiceSx}, ${drag.juiceSy})`;
     }
     drag.juiceFrame = requestAnimationFrame(tick);
@@ -1042,7 +1074,7 @@ function beginCardJuice(element) {
 }
 
 function nudgeCardJuice(event) {
-  if (!drag?.juiceElement) return;
+  if (!drag?.juiceElement || drag.noWiggle) return;
   if (drag.juiceX == null) {
     drag.juiceX = event.clientX;
     drag.juiceY = event.clientY;
@@ -1469,6 +1501,7 @@ function assignCommander(card) {
 
 function refreshCommanderDrag() {
   commanderForm.classList.toggle("can-drag", Boolean(commander?.oracleId));
+  refreshIllegalMarkings();
   updateCardCount();
   persistDeck();
 }

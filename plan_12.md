@@ -15,3 +15,16 @@ This is a huge overhaul to the existing site. Under each incremented version bel
 ## v1.2.0.2
 - Update to the home page, above the import deck box is a "NEW DECK" button to create a blank deck.
 - Semantics, update the navbar to say deck instead of decks on the tab that will take you back to the current working deck.
+
+## v1.2.0.3
+- Add a drop shadow representing where a card will be when its put down to allow for more precice placement.
+- Remove wiggle animation from stacks when they're being dragged around the screen, but keep the pickup and put down animations
+- Put a red outline around any cards that are added to the canvas if they don't fit in the commander's color identity to indicate that they aren't legal in the deck
+- Use the same red border for a card that is not legal in commander
+
+## v1.2.0.4
+- Remove that drop shadow, I don't like how it looks
+- Lets make that red outline be fitted around the card (match the corner roundedness)
+- Lets add to the illegal card feature. Add the following features to it:
+    - Add a red tint to the card image as well as the outline for a card thats illegal
+    - Make both the outline and the tint a yellow color for a card that doesn't fit the colors, keeping red for illegal cards

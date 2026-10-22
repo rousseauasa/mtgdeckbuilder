@@ -75,6 +75,7 @@ function trimCard(card) {
     type_line: card.type_line || "",
     colors: card.colors || [],
     color_identity: card.color_identity || [],
+    legalities: card.legalities ? { commander: card.legalities.commander || "" } : {},
   };
   if (card.image_uris?.normal) trimmed.image_uris = { normal: card.image_uris.normal };
   if (card.card_faces?.length) trimmed.card_faces = card.card_faces.map(trimFace);
