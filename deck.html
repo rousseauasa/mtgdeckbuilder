@@ -3,14 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Decks · MTG Decks</title>
+    <title>Deck · MTG Decks</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body class="page-deck">
     <header class="topbar">
       <a class="brand" href="index.html">MTG DECKS</a>
       <nav class="nav" aria-label="Primary">
-        <a href="deck.html" aria-current="page">Decks</a>
+        <a href="deck.html" aria-current="page">Deck</a>
+        <a href="stats.html" id="nav-stats">Stats</a>
         <button type="button" id="import-deck">Import</button>
         <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
       </nav>
@@ -51,6 +52,7 @@
           </form>
           <p class="status" id="search-status" role="status"></p>
           <button type="button" class="new-category" id="new-category">New category</button>
+          <button type="button" class="new-category" id="new-note">New note</button>
           <details class="category-index">
             <summary>Categories</summary>
             <div class="category-index-scroll">
@@ -79,6 +81,7 @@
         <div class="category-picker-list" id="category-picker-list"></div>
       </div>
     </div>
+    <script src="library.js"></script>
     <script src="deck.js"></script>
   </body>
 </html>

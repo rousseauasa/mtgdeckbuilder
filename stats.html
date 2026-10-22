@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Stats · MTG Decks</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="index.html">MTG DECKS</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="deck.html">Deck</a>
+        <a href="stats.html" aria-current="page">Stats</a>
+      </nav>
+    </header>
+    <main class="stats">
+      <p class="stats-empty" id="stats-empty" hidden>Load a deck to see its stats.</p>
+      <div id="stats-body" hidden>
+        <p class="stats-count" id="stats-count"></p>
+        <section class="stats-panel">
+          <h2>Card types</h2>
+          <div class="bars" id="type-bars"></div>
+        </section>
+        <section class="stats-panel">
+          <h2>Card colors</h2>
+          <div class="color-layout">
+            <div class="color-chart" id="color-chart"></div>
+            <ul class="legend" id="color-legend"></ul>
+          </div>
+        </section>
+        <section class="stats-panel">
+          <h2>Commander color identity</h2>
+          <p class="commander-stat" id="commander-name"></p>
+          <div class="identity" id="identity"></div>
+        </section>
+      </div>
+    </main>
+    <script src="library.js"></script>
+    <script src="stats.js"></script>
+  </body>
+</html>

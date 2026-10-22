@@ -5,6 +5,7 @@ const searchInput = document.querySelector("#card-query");
 const searchStatus = document.querySelector("#search-status");
 const results = document.querySelector("#results");
 const newCategoryButton = document.querySelector("#new-category");
+const newNoteButton = document.querySelector("#new-note");
 const categoryList = document.querySelector("#category-list");
 const commanderForm = document.querySelector("#commander-form");
 const commanderInput = document.querySelector("#commander-name");
@@ -27,19 +28,15 @@ const categoryPickerList = document.querySelector("#category-picker-list");
 const categoryPickerEmpty = document.querySelector("#category-picker-empty");
 const categoryPickerBackdrop = document.querySelector("#category-picker-backdrop");
 
-const AUTOCOMPLETE_URL = "https://api.scryfall.com/cards/autocomplete";
-const SEARCH_URL = "https://api.scryfall.com/cards/search";
-const USER_AGENT = "MTGDecks/0.1 (personal deckbuilder)";
-const MIN_REQUEST_GAP_MS = 100;
 const STACK_OFFSET = 30;
 const CARD_HEIGHT = 279;
 const DRAG_LAYER = "2000";
 
-const cardDatabase = new Map();
 const state = {
   cards: [],
   categories: [],
   stacks: [],
+  notes: [],
 };
 
 let panX = 0;
@@ -53,54 +50,7 @@ let drag = null;
 let commander = null;
 let menuCardId = null;
 let categoryPickerCardId = null;
-let lastRequestAt = 0;
-let requestChain = Promise.resolve();
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function scryfallHeaders() {
-  const headers = { Accept: "application/json" };
-  try {
-    new Headers({ "User-Agent": USER_AGENT });
-    headers["User-Agent"] = USER_AGENT;
-  } catch {
-    // Browsers send their own User-Agent and reject a script-set replacement.
-  }
-  return headers;
-}
-
-const headers = scryfallHeaders();
-
-function scryfallFetch(url) {
-  const run = requestChain.then(async () => {
-    const wait = MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
-    if (wait > 0) await sleep(wait);
-    lastRequestAt = Date.now();
-    return fetch(url, { headers });
-  });
-  requestChain = run.then(
-    () => {},
-    () => {},
-  );
-  return run;
-}
-
-async function scryfallJson(url) {
-  const response = await scryfallFetch(url);
-  const body = await response.json();
-  if (!response.ok) {
-    throw new Error(body.details || "Scryfall request failed.");
-  }
-  return body;
-}
-
-function rememberCard(card) {
-  if (card?.oracle_id && !cardDatabase.has(card.oracle_id)) {
-    cardDatabase.set(card.oracle_id, card);
-  }
-}
+let deckReady = false;
 
 function flippableFaces(oracleId) {
   const card = cardDatabase.get(oracleId);
@@ -310,6 +260,23 @@ function createCategory() {
   input?.select();
 }
 
+function createNote() {
+  const slot = state.notes.length;
+  state.notes.push({
+    id: crypto.randomUUID(),
+    title: "Note",
+    body: "",
+    x: 80 - panX + slot * 28,
+    y: 200 - panY + slot * 28,
+    collapsed: false,
+  });
+  renderBoard();
+  const created = state.notes[state.notes.length - 1];
+  const input = elementById("note", created.id)?.querySelector(".note-title");
+  input?.focus();
+  input?.select();
+}
+
 function applyPan() {
   world.style.transform = `translate(${panX}px, ${panY}px)`;
   viewport.style.backgroundPosition = `${panX}px ${panY}px`;
@@ -339,7 +306,11 @@ function renderBoard() {
     layer += 1;
     world.append(element);
   }
+  for (const note of state.notes) {
+    world.append(renderNote(note));
+  }
   updateCardCount();
+  persistDeck();
 }
 
 function renderStack(stack) {
@@ -383,6 +354,81 @@ function renderCategoryIndex() {
     row.append(cell);
     categoryList.append(row);
   }
+}
+
+function renderNote(note) {
+  const article = document.createElement("article");
+  article.className = "note";
+  article.dataset.id = note.id;
+  article.classList.toggle("is-collapsed", note.collapsed);
+  article.style.left = `${note.x}px`;
+  article.style.top = `${note.y}px`;
+
+  const bar = document.createElement("div");
+  bar.className = "note-bar";
+  const grip = document.createElement("span");
+  grip.className = "grip";
+  grip.tabIndex = 0;
+  grip.setAttribute("role", "button");
+  grip.setAttribute("aria-label", "Drag note");
+  grip.textContent = "⠿";
+  const title = document.createElement("input");
+  title.className = "note-title";
+  title.value = note.title;
+  title.setAttribute("aria-label", "Note title");
+  title.addEventListener("input", () => {
+    note.title = title.value;
+    persistDeck();
+  });
+  title.addEventListener("blur", () => {
+    note.title = title.value.trim() || "Note";
+    title.value = note.title;
+    persistDeck();
+  });
+  title.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      title.blur();
+    }
+  });
+  const collapse = document.createElement("button");
+  collapse.type = "button";
+  collapse.className = "note-collapse";
+  collapse.textContent = note.collapsed ? "▸" : "▾";
+  collapse.setAttribute("aria-expanded", note.collapsed ? "false" : "true");
+  collapse.setAttribute("aria-label", note.collapsed ? "Expand note" : "Collapse note");
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "note-delete";
+  remove.textContent = "×";
+  remove.setAttribute("aria-label", "Delete note");
+  remove.addEventListener("click", () => {
+    state.notes = state.notes.filter((item) => item.id !== note.id);
+    renderBoard();
+  });
+  bar.append(grip, title, collapse, remove);
+
+  const body = document.createElement("textarea");
+  body.className = "note-body";
+  body.value = note.body;
+  body.placeholder = "Write a note";
+  body.setAttribute("aria-label", "Note text");
+  body.hidden = note.collapsed;
+  body.addEventListener("input", () => {
+    note.body = body.value;
+    persistDeck();
+  });
+  collapse.addEventListener("click", () => {
+    note.collapsed = !note.collapsed;
+    body.hidden = note.collapsed;
+    article.classList.toggle("is-collapsed", note.collapsed);
+    collapse.textContent = note.collapsed ? "▸" : "▾";
+    collapse.setAttribute("aria-expanded", note.collapsed ? "false" : "true");
+    collapse.setAttribute("aria-label", note.collapsed ? "Expand note" : "Collapse note");
+    persistDeck();
+  });
+  article.append(bar, body);
+  return article;
 }
 
 function focusCategory(category) {
@@ -445,11 +491,13 @@ function renderCategory(category) {
   input.addEventListener("input", () => {
     category.name = input.value;
     renderCategoryIndex();
+    persistDeck();
   });
   input.addEventListener("blur", () => {
     category.name = input.value.trim() || "Category";
     input.value = category.name;
     renderCategoryIndex();
+    persistDeck();
   });
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -608,6 +656,10 @@ function categoryById(id) {
   return state.categories.find((category) => category.id === id);
 }
 
+function noteById(id) {
+  return state.notes.find((note) => note.id === id);
+}
+
 function elementById(className, id) {
   return [...world.querySelectorAll(`.${className}`)].find((element) => element.dataset.id === id);
 }
@@ -722,7 +774,9 @@ function showSpawnGhost(item, clientX, clientY) {
     dragGhost.append(fallback);
   }
   dragGhost.hidden = false;
+  dragGhost.classList.add("is-juicy");
   moveGhost(clientX, clientY);
+  beginCardJuice(dragGhost);
 }
 
 function readDrop(clientX, clientY, ignoreId) {
@@ -770,6 +824,12 @@ function onPointerDown(event) {
       return;
     }
     startCardDrag(free.dataset.id, event, "free");
+    return;
+  }
+  const note = event.target.closest(".note");
+  if (note) {
+    if (event.target.closest("input, textarea, button")) return;
+    startNoteDrag(note.dataset.id, event);
     return;
   }
   const category = event.target.closest(".category");
@@ -879,6 +939,7 @@ function startCardDrag(id, event, mode) {
     const element = elementById("free-card", id);
     element?.classList.add("is-dragging");
     if (element) element.style.zIndex = DRAG_LAYER;
+    beginCardJuice(element);
     return;
   }
   elementById("category-card", id)?.classList.add("is-lifted");
@@ -904,7 +965,9 @@ function showGhost(card, clientX, clientY) {
     dragGhost.append(fallback);
   }
   dragGhost.hidden = false;
+  dragGhost.classList.add("is-juicy");
   moveGhost(clientX, clientY);
+  beginCardJuice(dragGhost);
 }
 
 function moveGhost(clientX, clientY) {
@@ -933,6 +996,80 @@ function startStackDrag(id, event) {
   const element = elementById("stack", id);
   element?.classList.add("is-dragging");
   if (element) element.style.zIndex = DRAG_LAYER;
+  beginCardJuice(element);
+}
+
+function startNoteDrag(id, event) {
+  const note = noteById(id);
+  if (!note) return;
+  event.preventDefault();
+  const point = clientToCanvas(event.clientX, event.clientY);
+  drag = {
+    kind: "note",
+    id,
+    pointerId: event.pointerId,
+    originX: event.clientX,
+    originY: event.clientY,
+    offsetX: point.x - note.x,
+    offsetY: point.y - note.y,
+    moved: false,
+  };
+  holdPointer(event);
+  world.style.zIndex = DRAG_LAYER;
+  elementById("note", id)?.classList.add("is-dragging");
+}
+
+function beginCardJuice(element) {
+  if (!drag || !element) return;
+  drag.juiceElement = element;
+  drag.juiceX = null;
+  drag.juiceRot = -2.5;
+  drag.juiceSx = 1.08;
+  drag.juiceSy = 0.96;
+  element.style.transform = "rotate(-2.5deg) scale(1.08, 0.96)";
+  if (drag.juicing) return;
+  drag.juicing = true;
+  const tick = (now) => {
+    if (!drag?.juicing) return;
+    const visual = drag.juiceElement;
+    if (visual && drag.moved) {
+      const wobble = Math.sin(now / 75) * 1.7;
+      visual.style.transform = `rotate(${drag.juiceRot + wobble}deg) scale(${drag.juiceSx}, ${drag.juiceSy})`;
+    }
+    drag.juiceFrame = requestAnimationFrame(tick);
+  };
+  drag.juiceFrame = requestAnimationFrame(tick);
+}
+
+function nudgeCardJuice(event) {
+  if (!drag?.juiceElement) return;
+  if (drag.juiceX == null) {
+    drag.juiceX = event.clientX;
+    drag.juiceY = event.clientY;
+    return;
+  }
+  const dx = event.clientX - drag.juiceX;
+  const dy = event.clientY - drag.juiceY;
+  drag.juiceX = event.clientX;
+  drag.juiceY = event.clientY;
+  drag.lean = (drag.lean ?? 0) * 0.5 + dx * 0.5;
+  drag.juiceRot = Math.max(-8, Math.min(8, drag.lean / 9));
+  const stretch = Math.min(0.08, Math.hypot(dx, dy) / 380);
+  drag.juiceSx = 1.05 + stretch;
+  drag.juiceSy = 1.03 - stretch * 0.75 + Math.max(-0.03, Math.min(0.03, dy / 500));
+}
+
+function endCardJuice() {
+  if (!drag) return;
+  drag.juicing = false;
+  if (drag.juiceFrame) cancelAnimationFrame(drag.juiceFrame);
+  drag.juiceFrame = 0;
+  const visual = drag.juiceElement;
+  dragGhost.classList.remove("is-juicy");
+  if (!visual) return;
+  visual.classList.remove("is-dragging", "is-juicy");
+  visual.getBoundingClientRect();
+  visual.style.transform = "";
 }
 
 function startCategoryDrag(id, event) {
@@ -962,6 +1099,16 @@ function holdPointer(event) {
   } catch {
     // The pointer is already gone, so later move events will not be captured.
   }
+}
+
+function moveNote(note, x, y) {
+  if (!note) return;
+  note.x = x;
+  note.y = y;
+  const element = elementById("note", note.id);
+  if (!element) return;
+  element.style.left = `${note.x}px`;
+  element.style.top = `${note.y}px`;
 }
 
 function moveCategory(category, x, y) {
@@ -995,6 +1142,7 @@ function onPointerMove(event) {
     return;
   }
   if (!drag.moved) return;
+  nudgeCardJuice(event);
 
   if (drag.kind === "spawn" || drag.kind === "commander-card") {
     if (!drag.shown) {
@@ -1029,6 +1177,10 @@ function onPointerMove(event) {
     moveCategory(categoryById(drag.id), nextX, nextY);
     return;
   }
+  if (drag.kind === "note") {
+    moveNote(noteById(drag.id), nextX, nextY);
+    return;
+  }
   if (drag.kind === "stack") {
     moveStack(stackById(drag.id), nextX, nextY);
     markDropTarget(categoryAtPoint(event.clientX, event.clientY), null, null);
@@ -1046,6 +1198,7 @@ function onPointerMove(event) {
     const lifted = elementById("free-card", card.instanceId);
     lifted?.classList.add("is-dragging");
     if (lifted) lifted.style.zIndex = DRAG_LAYER;
+    beginCardJuice(lifted);
     return;
   }
 
@@ -1070,6 +1223,7 @@ function onPointerMove(event) {
 
 function onPointerUp(event) {
   if (!drag || event.pointerId !== drag.pointerId) return;
+  endCardJuice();
   const distance = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY);
   if (distance > (drag.threshold ?? 4)) drag.moved = true;
   if (drag.moved && drag.kind !== "spawn" && drag.kind !== "commander-card") settleDrag(event.clientX, event.clientY);
@@ -1105,12 +1259,21 @@ function onPointerUp(event) {
   if (current.kind === "pan") return;
   if (current.kind === "category") {
     elementById("category", current.id)?.classList.remove("is-dragging");
+    persistDeck();
+    return;
+  }
+  if (current.kind === "note") {
+    elementById("note", current.id)?.classList.remove("is-dragging");
+    persistDeck();
     return;
   }
   if (current.kind === "stack") {
     const stackCategoryId = current.moved ? categoryAtPoint(event.clientX, event.clientY) : null;
     if (stackCategoryId) moveStackIntoCategory(current.id, stackCategoryId);
-    else elementById("stack", current.id)?.classList.remove("is-dragging");
+    else {
+      elementById("stack", current.id)?.classList.remove("is-dragging");
+      persistDeck();
+    }
     return;
   }
   if (!current.moved) {
@@ -1153,6 +1316,10 @@ function settleDrag(clientX, clientY) {
   const nextY = point.y - drag.offsetY;
   if (drag.kind === "category") {
     moveCategory(categoryById(drag.id), nextX, nextY);
+    return;
+  }
+  if (drag.kind === "note") {
+    moveNote(noteById(drag.id), nextX, nextY);
     return;
   }
   if (drag.kind === "stack") {
@@ -1199,6 +1366,7 @@ searchForm.addEventListener("submit", (event) => {
 });
 
 newCategoryButton.addEventListener("click", createCategory);
+newNoteButton.addEventListener("click", createNote);
 
 viewport.addEventListener("pointerdown", onPointerDown);
 document.addEventListener("pointermove", onPointerMove);
@@ -1208,7 +1376,7 @@ viewport.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
-    if (event.target.closest(".commander, .decklist-bar")) return;
+    if (event.target.closest(".commander, .decklist-bar, .note")) return;
     closeCardMenu();
     panX -= event.deltaX;
     panY -= event.deltaY;
@@ -1302,6 +1470,7 @@ function assignCommander(card) {
 function refreshCommanderDrag() {
   commanderForm.classList.toggle("can-drag", Boolean(commander?.oracleId));
   updateCardCount();
+  persistDeck();
 }
 
 function updateCardCount() {
@@ -1429,88 +1598,47 @@ function setDecklistStatus(message, isError = false) {
   decklistStatus.classList.toggle("is-error", isError);
 }
 
-function parseCardLine(rest) {
-  const parts = rest.split(/\s+/);
-  const tags = [];
-  while (parts.length > 0 && /^@[A-Za-z]/.test(parts[parts.length - 1])) {
-    tags.unshift(parts.pop());
-  }
-  const name = parts.join(" ");
-  if (!name) return { error: "That file doesn't match the decklist format." };
-  let category = null;
-  for (const tag of tags) {
-    if (!/^@[Cc]_/.test(tag)) return { error: "That file doesn't match the decklist format." };
-    if (category) return { error: "That file doesn't match the decklist format." };
-    category = tag.slice(3).replaceAll("+", " ").trim();
-    if (!category) return { error: "That file doesn't match the decklist format." };
-  }
-  return { name, category };
+function persistDeck() {
+  if (!deckReady) return;
+  const cardsByOracle = {};
+  cardDatabase.forEach((card, id) => {
+    cardsByOracle[id] = card;
+  });
+  saveDeckState({
+    cards: state.cards,
+    categories: state.categories,
+    stacks: state.stacks,
+    notes: state.notes,
+    commander,
+    cardsByOracle,
+  });
 }
 
-function categoryTag(name) {
-  return `@C_${name.trim().replaceAll(" ", "+")}`;
-}
-
-function parseDecklist(text) {
-  const entries = [];
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const match = trimmed.match(/^(\d+)\s+(.+)$/);
-    if (!match) return { error: "That file doesn't match the decklist format." };
-    const count = Number(match[1]);
-    if (!Number.isInteger(count) || count < 1 || count > 250) {
-      return { error: "That file doesn't match the decklist format." };
+function restoreDeck() {
+  const saved = loadDeckState();
+  if (!saved) return false;
+  state.cards = saved.cards ?? [];
+  state.categories = saved.categories ?? [];
+  state.stacks = saved.stacks ?? [];
+  state.notes = saved.notes ?? [];
+  commander = saved.commander ?? null;
+  cardDatabase.clear();
+  for (const [id, card] of Object.entries(saved.cardsByOracle ?? {})) {
+    cardDatabase.set(id, card);
+  }
+  if (commander?.name) {
+    commanderInput.value = commander.name;
+    const display = cardDisplay(commander.oracleId, 0);
+    if (display.image) {
+      commanderPreview.src = display.image;
+      commanderPreview.alt = display.name;
+      commanderPreview.hidden = false;
     }
-    const parsed = parseCardLine(match[2].trim());
-    if (parsed.error) return parsed;
-    entries.push({ count, name: parsed.name, category: parsed.category });
   }
-  if (entries.length === 0) return { error: "That file doesn't match the decklist format." };
-  return { cards: entries.slice(0, -1), commander: entries[entries.length - 1] };
-}
-
-function gridPosition(index) {
-  const width = viewport.getBoundingClientRect().width;
-  const columns = Math.max(1, Math.floor((width - 40) / 220));
-  const col = index % columns;
-  const row = Math.floor(index / columns);
-  return {
-    x: 24 - panX + col * 220,
-    y: 120 - panY + row * 310,
-  };
-}
-
-function canonicalCardName(name) {
-  return name.trim().replace(/\s*\/+\s*/g, " // ");
-}
-
-function sameCardName(a, b) {
-  return canonicalCardName(a).toLowerCase() === canonicalCardName(b).toLowerCase();
-}
-
-async function fetchExact(name) {
-  try {
-    const url = new URL(SEARCH_URL);
-    url.searchParams.set("q", `!"${name.replaceAll('"', "")}"`);
-    url.searchParams.set("unique", "cards");
-    const body = await scryfallJson(url);
-    const card = body.data?.find((entry) => sameCardName(entry.name, name))
-      ?? body.data?.find((entry) => entry.card_faces?.some((face) => sameCardName(face.name, name)));
-    if (!card?.oracle_id) return null;
-    rememberCard(card);
-    return card;
-  } catch (error) {
-    if (/no cards found/i.test(error.message)) return null;
-    throw error;
-  }
-}
-
-async function lookupExact(name) {
-  const canonical = canonicalCardName(name);
-  const card = await fetchExact(canonical);
-  if (card || canonical.toLowerCase() === name.trim().toLowerCase()) return card;
-  return fetchExact(name.trim());
+  renderBoard();
+  renderCategoryIndex();
+  refreshCommanderDrag();
+  return true;
 }
 
 async function importDecklist(text) {
@@ -1530,6 +1658,7 @@ async function importDecklist(text) {
         setDecklistStatus(`Couldn't find ${name}.`, true);
         return;
       }
+      rememberCard(card);
       found.set(name.toLowerCase(), card);
     }
   } catch (error) {
@@ -1537,59 +1666,13 @@ async function importDecklist(text) {
     return;
   }
 
-  const categoriesByName = new Map();
-  const importedCategories = [];
-  const ensureCategory = (name) => {
-    const key = name.toLowerCase();
-    const existing = categoriesByName.get(key);
-    if (existing) return existing;
-    const category = {
-      id: crypto.randomUUID(),
-      name,
-      x: 24 - panX,
-      y: 120 - panY,
-      display: "names",
-    };
-    state.categories.push(category);
-    categoriesByName.set(key, category);
-    importedCategories.push(category);
-    return category;
-  };
-
-  let placed = 0;
-  const loose = [];
-  for (const entry of parsed.cards) {
-    const card = found.get(entry.name.toLowerCase());
-    const category = entry.category ? ensureCategory(entry.category) : null;
-    for (let copy = 0; copy < entry.count; copy += 1) {
-      const instance = createInstance(card.oracle_id, 0, 0);
-      if (category) instance.categoryId = category.id;
-      else loose.push(instance);
-      placed += 1;
-    }
-  }
-  let nextY = 120 - panY;
-  importedCategories.forEach((category, index) => {
-    category.x = 24 - panX + index * 260;
-    category.y = 120 - panY;
-    const count = state.cards.filter((card) => card.categoryId === category.id).length;
-    const rows = Math.max(count, 1);
-    nextY = Math.max(nextY, category.y + Math.max(112, 72 + rows * 36) + 32);
-    for (const card of state.cards) {
-      if (card.categoryId === category.id) {
-        card.x = category.x;
-        card.y = category.y;
-      }
-    }
-  });
-  loose.forEach((card, index) => {
-    const position = gridPosition(index);
-    card.x = position.x;
-    card.y = nextY === 120 - panY ? position.y : position.y + (nextY - (120 - panY));
-  });
-  assignCommander({ oracleId: found.get(parsed.commander.name.toLowerCase()).oracle_id, faceIndex: 0 });
+  const laid = layoutImportedDeck(parsed, found, viewport.getBoundingClientRect().width, panX, panY);
+  state.categories.push(...laid.categories);
+  state.cards.push(...laid.cards);
+  assignCommander({ oracleId: laid.commanderOracleId, faceIndex: 0 });
   renderBoard();
   renderCategoryIndex();
+  const placed = laid.cards.length;
   setDecklistStatus(placed === 1 ? "Imported 1 card." : `Imported ${placed} cards.`);
 }
 
@@ -1639,5 +1722,10 @@ decklistFile.addEventListener("change", async () => {
 saveDeckButton.addEventListener("click", exportDecklist);
 
 renderResults([], "Search for a card, then add it to the canvas.");
-renderCategoryIndex();
 applyPan();
+if (!restoreDeck()) renderCategoryIndex();
+deckReady = true;
+
+document.querySelector("#nav-stats")?.addEventListener("click", () => {
+  persistDeck();
+});

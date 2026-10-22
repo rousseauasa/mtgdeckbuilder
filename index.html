@@ -10,30 +10,31 @@
     <header class="topbar">
       <a class="brand" href="index.html">MTG DECKS</a>
       <nav class="nav" aria-label="Primary">
-        <a href="deck.html">Decks</a>
+        <a href="deck.html">Deck</a>
+        <a href="stats.html">Stats</a>
       </nav>
     </header>
-    <main>
-      <section class="lookup">
-        <form class="search" id="search-form">
-          <input
-            id="card-query"
-            name="q"
-            type="search"
-            placeholder="Search for a card"
-            aria-label="Card name"
-            autocomplete="off"
-          />
-          <button type="submit">Search</button>
-        </form>
-        <p class="status" id="status" role="status"></p>
-        <figure class="card-display">
-          <img id="card-image" alt="" width="488" height="680" hidden />
-          <button type="button" class="flip" id="flip-card" hidden>Flip</button>
-          <figcaption id="card-caption" hidden></figcaption>
-        </figure>
-      </section>
+    <main class="home">
+      <div class="home-stack">
+        <button type="button" class="new-deck" id="new-deck">New deck</button>
+        <div class="dropbox" id="dropbox">
+          <div class="dropbox-prompt" id="dropbox-prompt">
+            <p class="dropbox-title">Drop a decklist here</p>
+            <button type="button" class="browse" id="browse">Browse</button>
+          </div>
+          <div class="progress-ring" id="progress" hidden>
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-track" cx="60" cy="60" r="52"></circle>
+              <circle class="ring-value" id="ring-value" cx="60" cy="60" r="52"></circle>
+            </svg>
+            <p class="ring-label" id="ring-label" aria-live="polite">0%</p>
+          </div>
+          <p class="status" id="home-status" role="status"></p>
+          <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
+        </div>
+      </div>
     </main>
-    <script src="app.js"></script>
+    <script src="library.js"></script>
+    <script src="home.js"></script>
   </body>
 </html>
