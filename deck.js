@@ -44,6 +44,7 @@ const cardDetailsNoImage = document.querySelector("#card-details-noimage");
 const cardDetailsTitle = document.querySelector("#card-details-title");
 const cardDetailsStatus = document.querySelector("#card-details-status");
 const cardDetailsBody = document.querySelector("#card-details-body");
+const trashCan = document.querySelector("#trash-can");
 
 const STACK_OFFSET = 30;
 const CARD_WIDTH = 200;
@@ -71,6 +72,7 @@ let pendingMove = null;
 let moveFrame = 0;
 let lastDropKey = null;
 let lastCommanderTarget = false;
+let lastTrashTarget = false;
 let persistTimer = 0;
 let persistPending = false;
 let commander = null;
@@ -1111,7 +1113,7 @@ function pointerInside(element, clientX, clientY) {
 
 function onPointerDown(event) {
   if (event.button !== 0 || event.ctrlKey) return;
-  if (event.target.closest(".decklist-bar")) {
+  if (event.target.closest(".decklist-bar, .trash-can")) {
     closeCardMenu();
     return;
   }
@@ -1588,10 +1590,12 @@ function onPointerMove(event) {
     } else {
       moveGhost(event.clientX, event.clientY);
     }
+    const overTrash = trashAtClientPoint(event.clientX, event.clientY);
+    markTrashTarget(overTrash);
     const fromCommander = drag.kind === "commander-card";
-    const overCommander = !fromCommander && commanderAtClientPoint(event.clientX, event.clientY);
+    const overCommander = !overTrash && !fromCommander && commanderAtClientPoint(event.clientX, event.clientY);
     markCommanderTarget(overCommander);
-    const blocked = overCommander || (fromCommander && commanderAtClientPoint(event.clientX, event.clientY));
+    const blocked = overTrash || overCommander || (fromCommander && commanderAtClientPoint(event.clientX, event.clientY));
     const hoverPoint = clientToCanvas(event.clientX, event.clientY);
     const categoryId = blocked ? null : categoryAtCanvasPoint(hoverPoint.x, hoverPoint.y);
     const target = blocked || categoryId ? null : dropTargetAtCanvasPoint(hoverPoint.x, hoverPoint.y, null);
@@ -1602,6 +1606,8 @@ function onPointerMove(event) {
   const point = clientToCanvas(event.clientX, event.clientY);
   const nextX = point.x - drag.offsetX;
   const nextY = point.y - drag.offsetY;
+  const overTrash = trashAtClientPoint(event.clientX, event.clientY);
+  markTrashTarget(overTrash);
 
   if (drag.kind === "category") {
     moveCategory(categoryById(drag.id), nextX, nextY);
@@ -1620,7 +1626,7 @@ function onPointerMove(event) {
       drag.moveDx = nextX - (drag.startX ?? nextX);
       drag.moveDy = nextY - (drag.startY ?? nextY);
     }
-    markDropTarget(categoryAtCanvasPoint(point.x, point.y), null, null);
+    markDropTarget(overTrash ? null : categoryAtCanvasPoint(point.x, point.y), null, null);
     return;
   }
 
@@ -1649,10 +1655,10 @@ function onPointerMove(event) {
     return;
   }
 
-  const overCommander = commanderAtClientPoint(event.clientX, event.clientY);
+  const overCommander = !overTrash && commanderAtClientPoint(event.clientX, event.clientY);
   markCommanderTarget(overCommander);
-  const categoryId = overCommander ? null : categoryAtCanvasPoint(point.x, point.y);
-  let target = categoryId || overCommander ? null : dropTargetAtCanvasPoint(point.x, point.y, drag.id);
+  const categoryId = overTrash || overCommander ? null : categoryAtCanvasPoint(point.x, point.y);
+  let target = categoryId || overCommander || overTrash ? null : dropTargetAtCanvasPoint(point.x, point.y, drag.id);
   if (target && drag.originStackId) {
     if (target.type === "stack" && target.id === drag.originStackId) target = null;
     if (target.type === "card" && drag.extractIds?.has(target.id)) target = null;
@@ -1688,12 +1694,13 @@ function onPointerUp(event) {
   if (drag.moved && drag.kind !== "spawn" && drag.kind !== "commander-card") settleDrag(event.clientX, event.clientY);
 
   const current = drag;
-  const placed = current.moved && (current.kind === "spawn" || current.kind === "commander-card") && pointerInside(viewport, event.clientX, event.clientY)
+  const overTrash = current.moved && trashAtClientPoint(event.clientX, event.clientY);
+  const placed = current.moved && !overTrash && (current.kind === "spawn" || current.kind === "commander-card") && pointerInside(viewport, event.clientX, event.clientY)
     ? readDrop(event.clientX, event.clientY, null)
     : null;
-  const overCommander = current.kind === "card" && current.moved && commanderAtPoint(event.clientX, event.clientY);
-  const categoryId = current.kind === "card" && !overCommander ? categoryAtPoint(event.clientX, event.clientY) : null;
-  const target = current.kind === "card" && current.moved && !categoryId && !overCommander
+  const overCommander = current.kind === "card" && current.moved && !overTrash && commanderAtPoint(event.clientX, event.clientY);
+  const categoryId = current.kind === "card" && !overCommander && !overTrash ? categoryAtPoint(event.clientX, event.clientY) : null;
+  const target = current.kind === "card" && current.moved && !categoryId && !overCommander && !overTrash
     ? landingTarget(event.clientX, event.clientY, current.id)
     : null;
   drag = null;
@@ -1701,11 +1708,13 @@ function onPointerUp(event) {
   world.style.zIndex = "";
   markDropTarget(null);
   markCommanderTarget(false);
+  markTrashTarget(false);
   dragGhost.hidden = true;
   if (typeof event.pointerId === "number" && viewport.hasPointerCapture?.(event.pointerId)) {
     viewport.releasePointerCapture(event.pointerId);
   }
 
+  if (overTrash && trashDraggedItem(current)) return;
   if (current.kind === "spawn") {
     if (!current.moved) placeNewCard(current.item, null);
     else if (placed) placeNewCard(current.item, placed);
@@ -1868,7 +1877,7 @@ viewport.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
-    if (event.target.closest(".commander, .decklist-bar, .note")) return;
+    if (event.target.closest(".commander, .decklist-bar, .trash-can, .note")) return;
     closeCardMenu();
     panX -= event.deltaX;
     panY -= event.deltaY;
@@ -1942,6 +1951,81 @@ function markCommanderTarget(active) {
   if (active === lastCommanderTarget) return;
   lastCommanderTarget = active;
   commanderForm.classList.toggle("is-drop-target", active);
+}
+
+function trashAtClientPoint(clientX, clientY) {
+  const rect = trashCan.getBoundingClientRect();
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+}
+
+function markTrashTarget(active) {
+  if (active === lastTrashTarget) return;
+  lastTrashTarget = active;
+  trashCan.classList.toggle("is-drop-target", active);
+}
+
+function deleteNote(note) {
+  if (!note) return;
+  state.notes = state.notes.filter((item) => item.id !== note.id);
+  elementById("note", note.id)?.remove();
+  persistDeck();
+}
+
+function deleteStack(stackId) {
+  const stack = stackById(stackId);
+  if (!stack) return;
+  const memberIds = [...stack.cardIds];
+  for (const id of memberIds) {
+    const card = cardById(id);
+    if (card) {
+      card.stackId = null;
+      state.cards = state.cards.filter((item) => item.instanceId !== id);
+      removeCardElements(id);
+    }
+  }
+  state.stacks = state.stacks.filter((item) => item.id !== stackId);
+  elementById("stack", stackId)?.remove();
+  refreshFreeCardLayers();
+  updateCardCount();
+  persistDeck();
+}
+
+function deleteCategory(categoryId) {
+  const category = categoryById(categoryId);
+  if (!category) return;
+  const members = state.cards.filter((card) => card.categoryId === categoryId);
+  for (const card of members) {
+    if (card.stackId) detachFromStack(card);
+    state.cards = state.cards.filter((item) => item.instanceId !== card.instanceId);
+    removeCardElements(card.instanceId);
+  }
+  state.categories = state.categories.filter((item) => item.id !== categoryId);
+  elementById("category", categoryId)?.remove();
+  renderCategoryIndex();
+  refreshFreeCardLayers();
+  updateCardCount();
+  persistDeck();
+}
+
+function trashDraggedItem(current) {
+  if (current.kind === "card") {
+    const card = cardById(current.id);
+    if (card) deleteCard(card);
+    return true;
+  }
+  if (current.kind === "stack") {
+    deleteStack(current.id);
+    return true;
+  }
+  if (current.kind === "category") {
+    deleteCategory(current.id);
+    return true;
+  }
+  if (current.kind === "note") {
+    deleteNote(noteById(current.id));
+    return true;
+  }
+  return false;
 }
 
 function assignCommander(card) {

@@ -250,25 +250,59 @@ body.page-devlog {
   }
 }
 
-body.page-credits {
+body.page-about {
   background-image: none;
+}
+
+.about {
+  display: grid;
+  place-items: center;
+  gap: 48px;
+  padding: 48px 20px 72px;
+}
+
+.about-intro {
+  width: min(640px, 100%);
+  text-align: center;
+}
+
+.about-intro h1 {
+  margin: 0 0 16px;
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.about-intro p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.about-intro p:last-child {
+  margin-bottom: 0;
+}
+
+.about-intro a {
+  color: var(--ink);
 }
 
 .credits {
   display: grid;
   place-items: center;
   gap: 24px;
-  padding: 48px 20px 72px;
+  width: min(640px, 100%);
 }
 
 .credits-intro {
-  width: min(640px, 100%);
+  width: 100%;
   text-align: center;
 }
 
-.credits-intro h1 {
+.credits-intro h1,
+.credits-intro h2 {
   margin: 0 0 8px;
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -283,7 +317,7 @@ body.page-credits {
   display: flex;
   align-items: center;
   gap: 24px;
-  width: min(640px, 100%);
+  width: 100%;
   padding: 28px 32px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -298,7 +332,8 @@ body.page-credits {
   object-fit: contain;
 }
 
-.credit-card h2 {
+.credit-card h2,
+.credit-card h3 {
   margin: 0 0 6px;
   font-size: 20px;
   font-weight: 600;
@@ -925,6 +960,37 @@ body.page-deck main {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+}
+
+.trash-can {
+  position: absolute;
+  z-index: 8;
+  right: 16px;
+  bottom: 16px;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fffdf8;
+  box-shadow: 0 10px 24px rgba(31, 28, 25, 0.08);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.trash-can img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.trash-can.is-drop-target {
+  z-index: 2500;
+  border-color: #c23b2e;
+  background: #fff5f3;
+  box-shadow: 0 0 0 3px rgba(194, 59, 46, 0.28), 0 14px 28px rgba(31, 28, 25, 0.14);
+  transform: scale(1.08);
 }
 
 .save-deck {
