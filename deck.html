@@ -106,6 +106,23 @@
         <div class="category-picker-list" id="printing-picker-list"></div>
       </div>
     </div>
+    <div class="category-picker" id="save-picker" hidden>
+      <button type="button" class="category-picker-backdrop" id="save-picker-backdrop" aria-label="Close"></button>
+      <div class="category-picker-dialog save-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="save-picker-title" tabindex="-1">
+        <h2 id="save-picker-title">Save deck</h2>
+        <p class="save-picker-hint">Choose a file format</p>
+        <div class="category-picker-list">
+          <button type="button" id="save-mtg-decks">
+            <span class="save-option-title">MTG Decks</span>
+            <span class="save-option-desc">JSON with notes, categories, stacks, and layout</span>
+          </button>
+          <button type="button" id="save-plain-text">
+            <span class="save-option-title">Plain Text</span>
+            <span class="save-option-desc">Simple count + name decklist (.txt)</span>
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="card-details" id="card-details" hidden>
       <button type="button" class="card-details-backdrop" id="card-details-backdrop" aria-label="Close"></button>
       <div class="card-details-dialog" role="dialog" aria-modal="true" aria-labelledby="card-details-title" tabindex="-1">

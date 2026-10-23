@@ -45,6 +45,10 @@ const cardDetailsTitle = document.querySelector("#card-details-title");
 const cardDetailsStatus = document.querySelector("#card-details-status");
 const cardDetailsBody = document.querySelector("#card-details-body");
 const trashCan = document.querySelector("#trash-can");
+const savePicker = document.querySelector("#save-picker");
+const savePickerBackdrop = document.querySelector("#save-picker-backdrop");
+const saveMtgDecks = document.querySelector("#save-mtg-decks");
+const savePlainText = document.querySelector("#save-plain-text");
 
 const STACK_OFFSET = 30;
 const CARD_WIDTH = 200;
@@ -2390,6 +2394,10 @@ document.addEventListener("keydown", (event) => {
     closeCardDetails();
     return;
   }
+  if (!savePicker.hidden) {
+    closeSavePicker();
+    return;
+  }
   if (!printingPicker.hidden) {
     closePrintingPicker();
     return;
@@ -2478,35 +2486,84 @@ function restoreDeck() {
   return true;
 }
 
-function exportDecklist() {
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function currentDeckSnapshot() {
+  const cardsByOracle = {};
+  cardDatabase.forEach((card, id) => {
+    cardsByOracle[id] = card;
+  });
+  const printingsById = {};
+  printingDatabase.forEach((printing, id) => {
+    printingsById[id] = printing;
+  });
+  return {
+    cards: state.cards,
+    categories: state.categories,
+    stacks: state.stacks,
+    notes: state.notes,
+    commander,
+    cardsByOracle,
+    printingsById,
+  };
+}
+
+function exportMtgDecks() {
+  flushPersist();
+  const file = buildDeckFile(currentDeckSnapshot());
+  const blob = new Blob([`${JSON.stringify(file, null, 2)}\n`], { type: "application/json" });
+  downloadBlob(blob, "deck.json");
+  setDecklistStatus("Saved MTG Decks file.");
+}
+
+function exportPlainText() {
   if (!commander?.name) {
-    setDecklistStatus("Set a commander before saving.", true);
+    setDecklistStatus("Set a commander before saving a plain text decklist.", true);
     return;
   }
   const counts = new Map();
   for (const card of state.cards) {
     const name = cardDisplay(card.oracleId, card.faceIndex, card.printingId).fullName;
-    const category = card.categoryId ? categoryById(card.categoryId)?.name?.trim() ?? "" : "";
-    const key = `${name}\0${category}`;
-    const entry = counts.get(key) ?? { name, category, count: 0 };
+    const entry = counts.get(name) ?? { name, count: 0 };
     entry.count += 1;
-    counts.set(key, entry);
+    counts.set(name, entry);
   }
   const lines = [...counts.values()]
-    .sort((a, b) => a.name.localeCompare(b.name) || a.category.localeCompare(b.category))
-    .map((entry) => `${entry.count} ${entry.name}${entry.category ? ` ${categoryTag(entry.category)}` : ""}`);
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((entry) => `${entry.count} ${entry.name}`);
   lines.push("", `1 ${commander.name}`);
   const blob = new Blob([`${lines.join("\n")}\n`], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "decklist.txt";
-  link.click();
-  URL.revokeObjectURL(url);
-  setDecklistStatus("");
+  downloadBlob(blob, "decklist.txt");
+  setDecklistStatus("Saved plain text decklist.");
 }
 
-saveDeckButton.addEventListener("click", exportDecklist);
+function closeSavePicker() {
+  savePicker.hidden = true;
+}
+
+function openSavePicker() {
+  setDecklistStatus("");
+  savePicker.hidden = false;
+  savePicker.querySelector(".save-picker-dialog")?.focus();
+}
+
+saveDeckButton.addEventListener("click", openSavePicker);
+savePickerBackdrop.addEventListener("click", closeSavePicker);
+saveMtgDecks.addEventListener("click", () => {
+  closeSavePicker();
+  exportMtgDecks();
+});
+savePlainText.addEventListener("click", () => {
+  closeSavePicker();
+  exportPlainText();
+});
 
 renderResults([], "Search for a card, then add it to the canvas.");
 applyPan();

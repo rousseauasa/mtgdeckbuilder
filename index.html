@@ -25,8 +25,12 @@
       <div class="home-stack">
         <button type="button" class="new-deck" id="new-deck">New deck</button>
         <div class="dropbox" id="dropbox">
+          <div class="load-toggle" id="load-toggle" role="tablist" aria-label="Import mode">
+            <button type="button" class="load-toggle-option is-selected" id="load-deck" role="tab" aria-selected="true">Load deck</button>
+            <button type="button" class="load-toggle-option" id="load-decklist" role="tab" aria-selected="false">Load decklist</button>
+          </div>
           <div class="dropbox-prompt" id="dropbox-prompt">
-            <p class="dropbox-title">Drop a decklist here</p>
+            <p class="dropbox-title" id="dropbox-title">Drop a deck here</p>
             <button type="button" class="browse" id="browse">Browse</button>
           </div>
           <div class="progress-ring" id="progress" hidden>
@@ -37,7 +41,7 @@
             <p class="ring-label" id="ring-label" aria-live="polite">0%</p>
           </div>
           <p class="status" id="home-status" role="status"></p>
-          <input id="decklist-file" type="file" accept=".txt,text/plain" hidden />
+          <input id="decklist-file" type="file" accept=".json,application/json" hidden />
         </div>
       </div>
     </main>

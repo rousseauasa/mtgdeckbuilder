@@ -5,6 +5,7 @@ var AUTOCOMPLETE_URL = "https://api.scryfall.com/cards/autocomplete";
 var USER_AGENT = "MTGDecks/0.1 (personal deckbuilder)";
 var MIN_REQUEST_GAP_MS = 100;
 var DECK_KEY = "mtg-deck";
+var MTG_DECKS_FORMAT = "mtg-decks";
 
 var CARD_TYPES = ["Creature", "Planeswalker", "Instant", "Sorcery", "Artifact", "Enchantment", "Land", "Battle", "Kindred", "Tribal"];
 var COLOR_LABELS = [
@@ -109,24 +110,14 @@ function rememberCard(card) {
 
 function parseCardLine(rest) {
   const parts = rest.split(/\s+/);
-  const tags = [];
+  // Category tags used to live on plain decklists; they now belong only to
+  // MTG Decks JSON saves. Strip any trailing @tags so old files still load.
   while (parts.length > 0 && /^@[A-Za-z]/.test(parts[parts.length - 1])) {
-    tags.unshift(parts.pop());
+    parts.pop();
   }
   const name = parts.join(" ");
   if (!name) return { error: "That file doesn't match the decklist format." };
-  let category = null;
-  for (const tag of tags) {
-    if (!/^@[Cc]_/.test(tag)) return { error: "That file doesn't match the decklist format." };
-    if (category) return { error: "That file doesn't match the decklist format." };
-    category = tag.slice(3).replaceAll("+", " ").trim();
-    if (!category) return { error: "That file doesn't match the decklist format." };
-  }
-  return { name, category };
-}
-
-function categoryTag(name) {
-  return `@C_${name.trim().replaceAll(" ", "+")}`;
+  return { name, category: null };
 }
 
 function parseDecklist(text) {
@@ -142,10 +133,47 @@ function parseDecklist(text) {
     }
     const parsed = parseCardLine(match[2].trim());
     if (parsed.error) return parsed;
-    entries.push({ count, name: parsed.name, category: parsed.category });
+    entries.push({ count, name: parsed.name, category: null });
   }
   if (entries.length === 0) return { error: "That file doesn't match the decklist format." };
   return { cards: entries.slice(0, -1), commander: entries[entries.length - 1] };
+}
+
+function buildDeckFile(snapshot) {
+  return {
+    format: MTG_DECKS_FORMAT,
+    version: 1,
+    cards: snapshot.cards ?? [],
+    categories: snapshot.categories ?? [],
+    stacks: snapshot.stacks ?? [],
+    notes: snapshot.notes ?? [],
+    commander: snapshot.commander ?? null,
+    cardsByOracle: snapshot.cardsByOracle ?? {},
+    printingsById: snapshot.printingsById ?? {},
+  };
+}
+
+function parseDeckFile(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { error: "That file isn't a valid MTG Decks deck." };
+  }
+  if (!data || data.format !== MTG_DECKS_FORMAT || !Array.isArray(data.cards)) {
+    return { error: "That file isn't a valid MTG Decks deck." };
+  }
+  return {
+    snapshot: {
+      cards: data.cards,
+      categories: Array.isArray(data.categories) ? data.categories : [],
+      stacks: Array.isArray(data.stacks) ? data.stacks : [],
+      notes: Array.isArray(data.notes) ? data.notes : [],
+      commander: data.commander ?? null,
+      cardsByOracle: data.cardsByOracle && typeof data.cardsByOracle === "object" ? data.cardsByOracle : {},
+      printingsById: data.printingsById && typeof data.printingsById === "object" ? data.printingsById : {},
+    },
+  };
 }
 
 function canonicalCardName(name) {

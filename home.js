@@ -1,5 +1,6 @@
 const dropbox = document.querySelector("#dropbox");
 const dropboxPrompt = document.querySelector("#dropbox-prompt");
+const dropboxTitle = document.querySelector("#dropbox-title");
 const progress = document.querySelector("#progress");
 const ringValue = document.querySelector("#ring-value");
 const ringLabel = document.querySelector("#ring-label");
@@ -7,6 +8,8 @@ const homeStatus = document.querySelector("#home-status");
 const browse = document.querySelector("#browse");
 const newDeckButton = document.querySelector("#new-deck");
 const fileInput = document.querySelector("#decklist-file");
+const loadDeckButton = document.querySelector("#load-deck");
+const loadDecklistButton = document.querySelector("#load-decklist");
 
 const ringRadius = Number(ringValue.getAttribute("r"));
 const ringLength = 2 * Math.PI * ringRadius;
@@ -15,6 +18,7 @@ ringValue.style.strokeDashoffset = String(ringLength);
 
 let busy = false;
 let dragDepth = 0;
+let loadMode = "deck";
 
 function setStatus(message, isError = false) {
   homeStatus.textContent = message;
@@ -36,7 +40,47 @@ function hideProgress() {
   ringLabel.textContent = "0%";
 }
 
-async function importText(text) {
+function setLoadMode(mode) {
+  loadMode = mode;
+  const isDeck = mode === "deck";
+  loadDeckButton.classList.toggle("is-selected", isDeck);
+  loadDecklistButton.classList.toggle("is-selected", !isDeck);
+  loadDeckButton.setAttribute("aria-selected", isDeck ? "true" : "false");
+  loadDecklistButton.setAttribute("aria-selected", isDeck ? "false" : "true");
+  dropboxTitle.textContent = isDeck ? "Drop a deck here" : "Drop a decklist here";
+  fileInput.accept = isDeck ? ".json,application/json" : ".txt,text/plain";
+  setStatus("");
+}
+
+async function finishLoad() {
+  showProgress(1);
+  await sleep(400);
+  ringLabel.textContent = "Deck loaded";
+  await sleep(800);
+  window.location.href = "deck.html";
+}
+
+async function importDeckFile(text) {
+  if (busy) return;
+  const parsed = parseDeckFile(text);
+  if (parsed.error) {
+    setStatus(parsed.error, true);
+    return;
+  }
+  busy = true;
+  setStatus("");
+  showProgress(0.4);
+  try {
+    saveDeckState(parsed.snapshot);
+    await finishLoad();
+  } catch (error) {
+    hideProgress();
+    setStatus(error.message, true);
+    busy = false;
+  }
+}
+
+async function importDecklist(text) {
   if (busy) return;
   const parsed = parseDecklist(text);
   if (parsed.error) {
@@ -68,18 +112,16 @@ async function importText(text) {
       cards: laid.cards,
       categories: laid.categories,
       stacks: [],
+      notes: [],
       commander: {
         query: commanderCard.name,
         name: commanderCard.name,
         oracleId: commanderCard.oracle_id,
       },
       cardsByOracle,
+      printingsById: {},
     });
-    showProgress(1);
-    await sleep(400);
-    ringLabel.textContent = "Deck loaded";
-    await sleep(800);
-    window.location.href = "deck.html";
+    await finishLoad();
   } catch (error) {
     hideProgress();
     setStatus(error.message, true);
@@ -87,12 +129,24 @@ async function importText(text) {
   }
 }
 
-function readDeckFile(file) {
+function readImportFile(file) {
   const reader = new FileReader();
-  reader.onload = () => importText(String(reader.result ?? ""));
+  reader.onload = () => {
+    const text = String(reader.result ?? "");
+    if (loadMode === "deck") importDeckFile(text);
+    else importDecklist(text);
+  };
   reader.onerror = () => setStatus("Couldn't read that file.", true);
   reader.readAsText(file);
 }
+
+loadDeckButton.addEventListener("click", () => {
+  if (!busy) setLoadMode("deck");
+});
+
+loadDecklistButton.addEventListener("click", () => {
+  if (!busy) setLoadMode("decklist");
+});
 
 browse.addEventListener("click", () => {
   fileInput.click();
@@ -107,6 +161,7 @@ newDeckButton.addEventListener("click", () => {
     notes: [],
     commander: null,
     cardsByOracle: {},
+    printingsById: {},
   });
   window.location.href = "deck.html";
 });
@@ -114,7 +169,7 @@ newDeckButton.addEventListener("click", () => {
 fileInput.addEventListener("change", () => {
   const file = fileInput.files?.[0];
   fileInput.value = "";
-  if (file) readDeckFile(file);
+  if (file) readImportFile(file);
 });
 
 dropbox.addEventListener("dragenter", (event) => {
@@ -140,5 +195,7 @@ dropbox.addEventListener("drop", (event) => {
   dragDepth = 0;
   dropbox.classList.remove("is-dragover");
   const file = event.dataTransfer?.files?.[0];
-  if (file) readDeckFile(file);
+  if (file) readImportFile(file);
 });
+
+setLoadMode("deck");

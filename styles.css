@@ -1511,10 +1511,67 @@ body.page-deck main {
   gap: 18px;
   width: 100%;
   min-height: 360px;
-  padding: 36px 28px;
+  padding: 28px 28px 36px;
   border: 1.5px dashed rgba(31, 28, 25, 0.28);
   border-radius: 28px;
   background: rgba(255, 253, 248, 0.8);
+}
+
+.load-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: min(360px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fffdf8;
+}
+
+.load-toggle-option {
+  border: 0;
+  padding: 10px 14px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  cursor: pointer;
+}
+
+.load-toggle-option.is-selected {
+  color: #fffdf8;
+  background: var(--ink);
+}
+
+.load-toggle-option:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.save-picker-dialog {
+  width: min(360px, 100%);
+}
+
+.save-picker-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.save-option-title {
+  display: block;
+  font-weight: 600;
+}
+
+.save-option-desc {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .dropbox.is-dragover {
