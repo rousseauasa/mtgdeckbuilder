@@ -25,14 +25,16 @@
       <main class="canvas-viewport" id="viewport" aria-label="Deck canvas">
         <div class="canvas-world" id="world"></div>
         <form class="commander" id="commander-form">
-          <label for="commander-name">Commander</label>
           <input
             id="commander-name"
             type="text"
             placeholder="Card name"
             autocomplete="off"
+            aria-label="Commander"
             aria-describedby="commander-status"
+            size="12"
           />
+          <p class="deck-price" id="deck-price" aria-label="Total deck price $0.00">$0.00</p>
           <p class="commander-status" id="commander-status" role="status"></p>
           <img class="commander-preview" id="commander-preview" alt="" hidden />
         </form>

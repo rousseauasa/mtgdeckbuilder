@@ -36,12 +36,13 @@ function scryfallHeaders() {
 
 var headers = scryfallHeaders();
 
-function scryfallFetch(url) {
+function scryfallFetch(url, init = {}) {
   const run = requestChain.then(async () => {
     const wait = MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
     if (wait > 0) await sleep(wait);
     lastRequestAt = Date.now();
-    return fetch(url, { headers });
+    const requestHeaders = { ...headers, ...(init.headers || {}) };
+    return fetch(url, { ...init, headers: requestHeaders });
   });
   requestChain = run.then(
     () => {},
@@ -57,6 +58,78 @@ async function scryfallJson(url) {
     throw new Error(body.details || "Scryfall request failed.");
   }
   return body;
+}
+
+async function scryfallPost(url, payload) {
+  const response = await scryfallFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.details || "Scryfall request failed.");
+  }
+  return body;
+}
+
+const PRICE_FIELDS = [
+  ["usd", "USD", ""],
+  ["usd_foil", "USD", "foil"],
+  ["usd_etched", "USD", "etched"],
+  ["eur", "EUR", ""],
+  ["eur_foil", "EUR", "foil"],
+];
+
+function trimPrices(prices) {
+  const trimmed = { ready: true };
+  if (!prices || typeof prices !== "object") return trimmed;
+  for (const [key] of PRICE_FIELDS) {
+    const raw = prices[key];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const amount = Number(raw);
+    if (Number.isFinite(amount)) trimmed[key] = amount;
+  }
+  return trimmed;
+}
+
+function hasPriceData(card) {
+  const prices = card?.prices;
+  if (!prices || typeof prices !== "object") return false;
+  if (prices.ready) return true;
+  return PRICE_FIELDS.some(([key]) => typeof prices[key] === "number");
+}
+
+function cardMarketPrice(card) {
+  const prices = card?.prices;
+  if (!prices) return null;
+  for (const [key, currency, finish] of PRICE_FIELDS) {
+    const amount = prices[key];
+    if (typeof amount === "number" && Number.isFinite(amount)) return { amount, currency, finish };
+  }
+  return null;
+}
+
+function formatMoney(amount, currency) {
+  return amount.toLocaleString("en-US", { style: "currency", currency });
+}
+
+function formatUsd(amount) {
+  return formatMoney(amount, "USD");
+}
+
+function formatCardPrice(card) {
+  const price = cardMarketPrice(card);
+  if (!price) return "";
+  const finish = price.finish ? ` ${price.finish}` : "";
+  return `${formatMoney(price.amount, price.currency)}${finish}`;
+}
+
+function formatDeckTotal(usdCents, eurCents) {
+  const parts = [];
+  if (usdCents || !eurCents) parts.push(formatUsd(usdCents / 100));
+  if (eurCents) parts.push(formatMoney(eurCents / 100, "EUR"));
+  return parts.join(" + ");
 }
 
 function trimFace(face) {
@@ -92,6 +165,7 @@ function trimCard(card) {
     set: card.set || "",
     collector_number: card.collector_number || "",
     artist: card.artist || "",
+    prices: trimPrices(card.prices),
   };
   if (card.power !== undefined) trimmed.power = card.power;
   if (card.toughness !== undefined) trimmed.toughness = card.toughness;
@@ -103,8 +177,14 @@ function trimCard(card) {
 }
 
 function rememberCard(card) {
-  if (card?.oracle_id && !cardDatabase.has(card.oracle_id)) {
+  if (!card?.oracle_id) return;
+  const existing = cardDatabase.get(card.oracle_id);
+  if (!existing) {
     cardDatabase.set(card.oracle_id, trimCard(card));
+    return;
+  }
+  if (!hasPriceData(existing) && (!existing.id || existing.id === card.id)) {
+    existing.prices = trimPrices(card.prices);
   }
 }
 

@@ -886,25 +886,30 @@ body.page-deck main {
   background: #fffdf8;
 }
 
-.commander label {
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .commander.can-drag {
   cursor: grab;
 }
 
 .commander input {
-  width: 168px;
+  width: auto;
+  max-width: min(48ch, 50vw);
   border: 0;
   padding: 0;
   color: inherit;
   font: inherit;
   background: transparent;
   cursor: text;
+}
+
+.deck-price {
+  margin: 0 0 0 2px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .commander input:focus {
@@ -1302,6 +1307,11 @@ body.page-deck main {
 
 .card-details-list dd {
   margin: 0;
+}
+
+.card-details-price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 700px) {

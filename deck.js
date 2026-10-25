@@ -13,6 +13,7 @@ const commanderForm = document.querySelector("#commander-form");
 const commanderInput = document.querySelector("#commander-name");
 const commanderStatus = document.querySelector("#commander-status");
 const commanderPreview = document.querySelector("#commander-preview");
+const deckPrice = document.querySelector("#deck-price");
 const saveDeckButton = document.querySelector("#save-deck");
 const decklistStatus = document.querySelector("#decklist-status");
 const cardCount = document.querySelector("#card-count");
@@ -85,6 +86,11 @@ let categoryPickerCardId = null;
 let printingPickerCardId = null;
 let printingPickerToken = 0;
 let cardDetailsToken = 0;
+let openDetailsInstance = null;
+let deckPriceToken = 0;
+let deckPriceTimer = 0;
+let priceRetry = 0;
+const unpricedOracleIds = new Set();
 let deckReady = false;
 
 const printingDatabase = new Map();
@@ -635,6 +641,7 @@ function updateCardDisplay(card) {
     markCommanderCard(element, card);
   }
   persistDeck();
+  refreshDeckPrice();
 }
 
 function renderCategoryIndex() {
@@ -1895,6 +1902,11 @@ function setCommanderStatus(message, isError = false) {
   commanderStatus.classList.toggle("is-error", isError);
 }
 
+function fitCommanderInput() {
+  const text = commanderInput.value || commanderInput.placeholder || "";
+  commanderInput.size = Math.min(48, Math.max(12, text.length));
+}
+
 async function chooseCommander(name) {
   const trimmed = name.trim();
   if (!trimmed) {
@@ -1945,6 +1957,8 @@ commanderForm.addEventListener("submit", (event) => {
 commanderInput.addEventListener("blur", () => {
   chooseCommander(commanderInput.value);
 });
+
+commanderInput.addEventListener("input", fitCommanderInput);
 
 function commanderAtPoint(clientX, clientY) {
   const rect = commanderForm.getBoundingClientRect();
@@ -2051,6 +2065,7 @@ function assignCommander(card) {
 
 function refreshCommanderDrag() {
   commanderForm.classList.toggle("can-drag", Boolean(commander?.oracleId));
+  fitCommanderInput();
   refreshIllegalMarkings();
   updateCardCount();
   persistDeck();
@@ -2060,6 +2075,209 @@ function updateCardCount() {
   const commanderOnCanvas = commander?.oracleId && state.cards.some((card) => card.oracleId === commander.oracleId);
   const total = state.cards.length + (commander?.oracleId && !commanderOnCanvas ? 1 : 0);
   cardCount.textContent = total === 1 ? "1 card" : `${total} cards`;
+  refreshDeckPrice();
+}
+
+function deckPriceInstances() {
+  const instances = state.cards.map((card) => ({
+    oracleId: card.oracleId,
+    printingId: card.printingId || null,
+  }));
+  const commanderOnCanvas = commander?.oracleId && state.cards.some((card) => card.oracleId === commander.oracleId);
+  if (commander?.oracleId && !commanderOnCanvas) {
+    instances.push({ oracleId: commander.oracleId, printingId: null });
+  }
+  return instances;
+}
+
+function renderDeckPrice(text) {
+  deckPrice.textContent = text;
+  deckPrice.setAttribute("aria-label", `Total deck price ${text}`);
+}
+
+function sumDeckPrices() {
+  const instances = deckPriceInstances();
+  let usdCents = 0;
+  let eurCents = 0;
+  let missing = 0;
+  for (const instance of instances) {
+    const priced = instancePrice(instance);
+    if (priced.missing) missing += 1;
+    else {
+      usdCents += priced.usdCents;
+      eurCents += priced.eurCents;
+    }
+  }
+  return { count: instances.length, usdCents, eurCents, missing };
+}
+
+function centsFor(card) {
+  const price = cardMarketPrice(card);
+  if (!price) return { missing: false, usdCents: 0, eurCents: 0 };
+  const cents = Math.round(price.amount * 100);
+  if (price.currency === "EUR") return { missing: false, usdCents: 0, eurCents: cents };
+  return { missing: false, usdCents: cents, eurCents: 0 };
+}
+
+function instancePrice(instance) {
+  if (instance.printingId && printingDatabase.has(instance.printingId)) {
+    const printing = printingDatabase.get(instance.printingId);
+    if (!hasPriceData(printing)) return { missing: true, usdCents: 0, eurCents: 0 };
+    return centsFor(printing);
+  }
+  const oracle = instance.oracleId ? cardDatabase.get(instance.oracleId) : null;
+  if (oracle) {
+    if (!hasPriceData(oracle)) return { missing: true, usdCents: 0, eurCents: 0 };
+    return centsFor(oracle);
+  }
+  if (instance.oracleId && unpricedOracleIds.has(instance.oracleId)) {
+    return { missing: false, usdCents: 0, eurCents: 0 };
+  }
+  return { missing: true, usdCents: 0, eurCents: 0 };
+}
+
+function paintDeckPrice() {
+  const { count, usdCents, eurCents, missing } = sumDeckPrices();
+  if (count === 0) renderDeckPrice(formatUsd(0));
+  else if (missing && usdCents === 0 && eurCents === 0) renderDeckPrice("…");
+  else renderDeckPrice(formatDeckTotal(usdCents, eurCents));
+  return missing;
+}
+
+function refreshDeckPrice() {
+  priceRetry = 0;
+  if (paintDeckPrice()) scheduleMissingPriceFetch();
+}
+
+function recordsNeedingPrices() {
+  const records = [];
+  const seen = new Set();
+  const addRecord = (record) => {
+    const key = record.id ? `id:${record.id}` : `oracle:${record.oracle_id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    records.push(record);
+  };
+  for (const instance of deckPriceInstances()) {
+    if (instance.printingId && printingDatabase.has(instance.printingId)) {
+      const printing = printingDatabase.get(instance.printingId);
+      if (!hasPriceData(printing)) addRecord(printing);
+      continue;
+    }
+    if (instance.printingId) {
+      addRecord({ id: instance.printingId, oracle_id: instance.oracleId, _placeholder: true, _printing: true });
+      continue;
+    }
+    const oracle = instance.oracleId ? cardDatabase.get(instance.oracleId) : null;
+    if (oracle) {
+      if (!hasPriceData(oracle)) addRecord(oracle);
+      continue;
+    }
+    if (instance.oracleId && !unpricedOracleIds.has(instance.oracleId)) {
+      addRecord({ oracle_id: instance.oracleId, _placeholder: true });
+    }
+  }
+  return records;
+}
+
+function assignPrices(record, prices) {
+  record.prices = prices;
+  if (record.id && printingDatabase.has(record.id)) {
+    const printing = printingDatabase.get(record.id);
+    if (printing !== record && !hasPriceData(printing)) printing.prices = prices;
+  }
+  if (record.oracle_id && cardDatabase.has(record.oracle_id)) {
+    const oracle = cardDatabase.get(record.oracle_id);
+    if (oracle !== record && (!record.id || oracle.id === record.id) && !hasPriceData(oracle)) oracle.prices = prices;
+  }
+}
+
+function storeFetchedCard(record, raw) {
+  if (!raw?.oracle_id) {
+    if (record.oracle_id) unpricedOracleIds.add(record.oracle_id);
+    return;
+  }
+  const trimmed = trimCard(raw);
+  if (record._printing) {
+    printingDatabase.set(trimmed.id, trimmed);
+    const oracle = cardDatabase.get(trimmed.oracle_id);
+    if (oracle && oracle.id === trimmed.id && !hasPriceData(oracle)) oracle.prices = trimmed.prices;
+    return;
+  }
+  const existing = cardDatabase.get(trimmed.oracle_id);
+  if (!existing) cardDatabase.set(trimmed.oracle_id, trimmed);
+  else if (!hasPriceData(existing)) existing.prices = trimmed.prices;
+}
+
+function applyPriceChunk(chunk, body) {
+  const byId = new Map();
+  const byOracle = new Map();
+  for (const card of body.data ?? []) {
+    if (card.id) byId.set(card.id, card);
+    if (card.oracle_id && !byOracle.has(card.oracle_id)) byOracle.set(card.oracle_id, card);
+  }
+  for (const record of chunk) {
+    const raw = record.id ? byId.get(record.id) : byOracle.get(record.oracle_id);
+    if (!raw) {
+      if (record._placeholder) {
+        if (record.oracle_id) unpricedOracleIds.add(record.oracle_id);
+      } else {
+        assignPrices(record, {});
+      }
+      continue;
+    }
+    if (record._placeholder) storeFetchedCard(record, raw);
+    else assignPrices(record, trimPrices(raw.prices));
+  }
+}
+
+async function fetchPriceChunk(chunk) {
+  const identifiers = chunk.map((record) => (record.id ? { id: record.id } : { oracle_id: record.oracle_id }));
+  return scryfallPost("https://api.scryfall.com/cards/collection", { identifiers });
+}
+
+function scheduleMissingPriceFetch() {
+  window.clearTimeout(deckPriceTimer);
+  deckPriceTimer = window.setTimeout(() => {
+    deckPriceTimer = 0;
+    const records = recordsNeedingPrices();
+    if (!records.length) return;
+    loadMissingPrices(records);
+  }, 200);
+}
+
+async function loadMissingPrices(records) {
+  const token = ++deckPriceToken;
+  try {
+    for (let index = 0; index < records.length; index += 75) {
+      const chunk = records.slice(index, index + 75);
+      const body = await fetchPriceChunk(chunk);
+      if (token !== deckPriceToken) return;
+      applyPriceChunk(chunk, body);
+    }
+  } catch {
+    if (token !== deckPriceToken) return;
+    priceRetry += 1;
+    if (priceRetry > 3) return;
+    window.setTimeout(() => {
+      if (token !== deckPriceToken) return;
+      scheduleMissingPriceFetch();
+    }, 700 * priceRetry);
+    return;
+  }
+  if (token !== deckPriceToken) return;
+  priceRetry = 0;
+  paintDeckPrice();
+  refreshOpenDetailsPrice();
+  persistDeck();
+}
+
+function refreshOpenDetailsPrice() {
+  if (cardDetails.hidden || !openDetailsInstance) return;
+  const printing = openDetailsInstance.printingId ? printingDatabase.get(openDetailsInstance.printingId) : null;
+  const data = printing ?? cardDatabase.get(openDetailsInstance.oracleId) ?? null;
+  if (!hasPriceData(data)) return;
+  renderCardDetails(data, openDetailsInstance);
 }
 
 function closeCardMenu() {
@@ -2190,6 +2408,7 @@ function closePrintingPicker() {
 
 function closeCardDetails() {
   cardDetailsToken += 1;
+  openDetailsInstance = null;
   cardDetails.hidden = true;
 }
 
@@ -2277,7 +2496,14 @@ function renderCardDetails(data, instance) {
     const legality = data.legalities?.commander;
     detailRow(list, "Commander", legality ? (legality === "legal" ? "Legal" : legality[0].toUpperCase() + legality.slice(1)) : "");
   }
-  if (list.childElementCount) cardDetailsBody.append(list);
+  const priceTerm = document.createElement("dt");
+  priceTerm.textContent = "Price";
+  const priceValue = document.createElement("dd");
+  priceValue.className = "card-details-price";
+  if (data && hasPriceData(data)) priceValue.textContent = formatCardPrice(data) || "Unavailable";
+  else priceValue.textContent = "…";
+  list.append(priceTerm, priceValue);
+  cardDetailsBody.append(list);
 }
 
 // Older saved decks only kept a few fields per card. If the details are not
@@ -2308,19 +2534,25 @@ async function openCardDetails(instance) {
   closeCardMenu();
   hideHoverPreview();
   const token = ++cardDetailsToken;
+  openDetailsInstance = instance;
   const printing = instance.printingId ? printingDatabase.get(instance.printingId) : null;
   let data = printing ?? cardDatabase.get(instance.oracleId) ?? null;
   renderCardDetails(data, instance);
   cardDetailsStatus.textContent = hasCardDetails(data) ? "" : "Loading details…";
   cardDetails.hidden = false;
   cardDetails.querySelector(".card-details-dialog")?.focus();
-  if (hasCardDetails(data)) return;
+  if (hasCardDetails(data) && hasPriceData(data)) return;
+  if (hasCardDetails(data)) {
+    scheduleMissingPriceFetch();
+    return;
+  }
   try {
     const full = await loadFullCard(instance);
     if (token !== cardDetailsToken || cardDetails.hidden || !full) return;
     data = full;
     renderCardDetails(data, instance);
     cardDetailsStatus.textContent = "";
+    refreshDeckPrice();
   } catch {
     if (token === cardDetailsToken) cardDetailsStatus.textContent = "Couldn't load the full details.";
   }
@@ -2568,7 +2800,9 @@ savePlainText.addEventListener("click", () => {
 renderResults([], "Search for a card, then add it to the canvas.");
 applyPan();
 if (!restoreDeck()) renderCategoryIndex();
+fitCommanderInput();
 deckReady = true;
+refreshDeckPrice();
 
 document.querySelector("#nav-stats")?.addEventListener("click", () => {
   flushPersist();
